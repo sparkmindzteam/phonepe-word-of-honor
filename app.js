@@ -551,7 +551,6 @@ let state = {
   shuffledQuiz: null,
   revealTarget: false,
   scoreSaved: false,
-  endHomeTimer: null,
 };
 
 function playerChip() {
@@ -621,14 +620,6 @@ function clearTimers() {
   state.wordFindTimer = null;
   if (state.idleResetTimer) clearTimeout(state.idleResetTimer);
   state.idleResetTimer = null;
-  if (state.endHomeTimer) clearInterval(state.endHomeTimer);
-  state.endHomeTimer = null;
-}
-
-function scheduleIdleReset() {
-  if (state.idleResetTimer) clearTimeout(state.idleResetTimer);
-  const sec = cfg?.idleResetSeconds ?? 10;
-  state.idleResetTimer = setTimeout(() => goStart(), sec * 1000);
 }
 
 function nowMs() {
@@ -979,7 +970,6 @@ function endGame() {
   clearTimers();
   saveScoreRecord();
   state.screen = Screen.END;
-  scheduleIdleReset();
   render();
 }
 
@@ -1473,7 +1463,6 @@ function renderEnd() {
   const pts = sectionPoints();
   const maxScore = roundsPerGame() * pts * 2;
   const feedback = getScoreFeedback(state.totalScore);
-  let left = cfg.idleResetSeconds ?? 10;
 
   const rows = state.roundScores
     .map((r, i) => {
@@ -1494,11 +1483,7 @@ function renderEnd() {
 
   $app.innerHTML = `
     <div class="screen screen-end">
-      ${renderHeader(
-        "",
-        "",
-        `<span class="chip" data-home-left>Home in ${left}s</span> ${playerChip()}`,
-      )}
+      ${renderHeader("", "", playerChip())}
       <div class="screen-body end-body">
         ${renderBrandBanner()}
         <div class="panel end-score-card" data-ui="end-card">
@@ -1507,20 +1492,10 @@ function renderEnd() {
           <div class="final-score-label">out of ${maxScore}</div>
           <div class="end-feedback">${escapeHtml(feedback)}</div>
           <div class="score-breakdown">${rows}</div>
-          <p class="player-recap">Returning home…</p>
         </div>
       </div>
     </div>
   `;
-  state.endHomeTimer = setInterval(() => {
-    left -= 1;
-    const chip = document.querySelector("[data-home-left]");
-    if (chip) chip.textContent = left > 0 ? `Home in ${left}s` : "Going home…";
-    if (left <= 0 && state.endHomeTimer) {
-      clearInterval(state.endHomeTimer);
-      state.endHomeTimer = null;
-    }
-  }, 1000);
 }
 
 function formatRecordTime(iso) {
@@ -1728,9 +1703,6 @@ function updateGridSelectionUI() {
     if (!e.target.closest("[data-home]")) return;
     e.preventDefault();
     goStart();
-  });
-  window.addEventListener("pointerdown", () => {
-    if (state.screen === Screen.END) scheduleIdleReset();
   });
   window.addEventListener("resize", syncWordfindLayout);
   window.addEventListener("orientationchange", () => setTimeout(syncWordfindLayout, 80));
