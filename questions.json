@@ -3,7 +3,7 @@
   "kioskResolution": "1920x1080",
   "roundsPerGame": 2,
   "wordFindSeconds": 20,
-  "idleResetSeconds": 10,
+  "idleResetSeconds": 7,
   "sectionPoints": 25,
   "quizPoints": 25,
   "wordPoints": 25,

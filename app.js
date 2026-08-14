@@ -622,6 +622,12 @@ function clearTimers() {
   state.idleResetTimer = null;
 }
 
+function scheduleIdleReset() {
+  if (state.idleResetTimer) clearTimeout(state.idleResetTimer);
+  const sec = cfg?.idleResetSeconds ?? 7;
+  state.idleResetTimer = setTimeout(() => goStart(), sec * 1000);
+}
+
 function nowMs() {
   return Date.now();
 }
@@ -970,6 +976,7 @@ function endGame() {
   clearTimers();
   saveScoreRecord();
   state.screen = Screen.END;
+  scheduleIdleReset();
   render();
 }
 
