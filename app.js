@@ -556,22 +556,13 @@ let state = {
 
 function playerChip() {
   if (!state.playerName) return "";
-  const id = state.employeeId ? ` · ${escapeHtml(state.employeeId)}` : "";
-  return `<span class="chip">${escapeHtml(state.playerName)}${id}</span>`;
+  return `<span class="chip">${escapeHtml(state.playerName)}</span>`;
 }
 
 function validateName(value) {
   const v = String(value || "").trim();
   if (v.length < 2) return "Please enter your name (at least 2 characters).";
   if (v.length > 60) return "Name is too long.";
-  return null;
-}
-
-function validateEmployeeId(value) {
-  const v = String(value || "").trim();
-  if (v.length < 2) return "Please enter your Employee ID (at least 2 characters).";
-  if (v.length > 30) return "Employee ID is too long.";
-  if (!/^[A-Za-z0-9\-_.]+$/.test(v)) return "Employee ID can only use letters, numbers, - _ .";
   return null;
 }
 
@@ -973,7 +964,7 @@ async function hydrateScoreDb() {
 
 function saveScoreRecord() {
   if (state.scoreSaved) return;
-  if (!state.playerName && !state.employeeId && !state.playerEmail) return;
+  if (!state.playerName && !state.playerEmail) return;
   state.scoreSaved = true;
   const rec = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1091,11 +1082,18 @@ function renderHeader(_title, _subtitle, chips = "") {
 }
 
 /** Global page title — outside white panels, on every screen. */
-function renderBrandBanner() {
+function renderBrandBanner({ home = false } = {}) {
+  if (home) {
+    return `
+    <div class="brand-banner brand-banner-home" data-ui="brand-banner">
+      <p class="brand-banner-welcome" data-ui="brand-welcome">Welcome To The</p>
+      <h1 class="brand-banner-title" data-ui="brand-title">Word of Honor</h1>
+    </div>
+  `;
+  }
   return `
     <div class="brand-banner" data-ui="brand-banner">
       <h1 class="brand-banner-title" data-ui="brand-title">Word of Honor</h1>
-      <p class="brand-banner-sub" data-ui="brand-sub">Integrity Challenge</p>
     </div>
   `;
 }
@@ -1212,10 +1210,10 @@ function renderEnterDetails() {
     <div class="screen screen-onboard">
       ${renderHeader()}
       <div class="screen-body form-body">
-        ${renderBrandBanner()}
+        ${renderBrandBanner({ home: true })}
         <div class="panel form-card" data-ui="form-card">
           <h2 class="form-title">Enter your details</h2>
-          <p class="form-lead">Name, Employee ID, and Email to begin the Integrity challenge.</p>
+          <p class="form-lead">Name and Email ID to begin.</p>
           <form class="player-form" data-form="details">
             <div class="field-group">
               <label class="field-label" for="player-name">Name</label>
@@ -1224,13 +1222,7 @@ function renderEnterDetails() {
                 placeholder="Your full name" value="${escapeHtml(state.playerName)}" />
             </div>
             <div class="field-group">
-              <label class="field-label" for="employee-id">Employee ID</label>
-              <input id="employee-id" class="field-input" name="employeeId" type="text"
-                inputmode="text" enterkeyhint="next" maxlength="30"
-                placeholder="Employee ID" value="${escapeHtml(state.employeeId)}" />
-            </div>
-            <div class="field-group">
-              <label class="field-label" for="player-email">Email</label>
+              <label class="field-label" for="player-email">Email ID</label>
               <div class="field-email">
                 <input id="player-email" class="field-input" name="email" type="text"
                   inputmode="email" enterkeyhint="go" maxlength="64" autocomplete="email"
@@ -1247,40 +1239,27 @@ function renderEnterDetails() {
   `;
   attachFormSubmit("[data-form=details]", (fd) => {
     const name = String(fd.get("name") || "").trim();
-    const id = String(fd.get("employeeId") || "").trim();
     const emailLocal = emailLocalPart(fd.get("email"));
     const email = toOfficialEmail(emailLocal);
     const nameErr = validateName(name);
     if (nameErr) {
       state.formError = nameErr;
       state.playerName = name;
-      state.employeeId = id;
       state.playerEmail = email;
       render();
-      return;
-    }
-    const idErr = validateEmployeeId(id);
-    if (idErr) {
-      state.formError = idErr;
-      state.playerName = name;
-      state.employeeId = id;
-      state.playerEmail = email;
-      render();
-      document.getElementById("employee-id")?.focus();
       return;
     }
     const emailErr = validateEmail(emailLocal);
     if (emailErr) {
       state.formError = emailErr;
       state.playerName = name;
-      state.employeeId = id;
       state.playerEmail = email;
       render();
       document.getElementById("player-email")?.focus();
       return;
     }
     state.playerName = name;
-    state.employeeId = id;
+    state.employeeId = "";
     state.playerEmail = email;
     goRules();
   });
@@ -1548,7 +1527,7 @@ function renderEnd() {
       <div class="screen-body end-body">
         ${renderBrandBanner()}
         <div class="panel end-score-card" data-ui="end-card">
-          <div class="player-recap">${escapeHtml(state.playerName)} · ${escapeHtml(state.employeeId)} · ${escapeHtml(state.playerEmail)}</div>
+          <div class="player-recap">${escapeHtml(state.playerName)} · ${escapeHtml(state.playerEmail)}</div>
           <div class="final-score">${state.totalScore}</div>
           <div class="final-score-label">out of ${maxScore}</div>
           <div class="end-feedback">${escapeHtml(feedback)}</div>
@@ -1569,11 +1548,11 @@ function formatRecordTime(iso) {
 }
 
 function downloadScoreCsv(list) {
-  const header = ["Time", "Name", "Employee ID", "Email", "Score", "Max", "Feedback"];
+  const header = ["Time", "Name", "Email ID", "Score", "Max", "Feedback"];
   const lines = [
     header.join(","),
     ...list.map((r) =>
-      [r.at, r.name, r.employeeId, r.email, r.score, r.maxScore, r.feedback]
+      [r.at, r.name, r.email, r.score, r.maxScore, r.feedback]
         .map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`)
         .join(","),
     ),
@@ -1595,7 +1574,6 @@ async function renderRecords() {
     ? all.filter(
         (r) =>
           String(r.name || "").toLowerCase().includes(q) ||
-          String(r.employeeId || "").toLowerCase().includes(q) ||
           String(r.email || "").toLowerCase().includes(q),
       )
     : all;
@@ -1605,7 +1583,6 @@ async function renderRecords() {
       <tr>
         <td>${escapeHtml(formatRecordTime(r.at))}</td>
         <td>${escapeHtml(r.name || "")}</td>
-        <td>${escapeHtml(r.employeeId || "")}</td>
         <td>${escapeHtml(r.email || "")}</td>
         <td><strong>${Number(r.score) || 0}</strong> / ${Number(r.maxScore) || 0}</td>
         <td>${escapeHtml(r.feedback || "")}</td>
@@ -1621,9 +1598,9 @@ async function renderRecords() {
         <div class="panel records-card">
           <div class="panel-kicker">Local database</div>
           <h2 class="form-title">Player records</h2>
-          <p class="form-lead">Saved on this kiosk only · Name, Employee ID, Email, Score · Ctrl+D to close</p>
+          <p class="form-lead">Saved on this kiosk only · Name, Email ID, Score · Ctrl+D to close</p>
           <div class="records-toolbar">
-            <input data-records-q type="search" placeholder="Search name, Employee ID, or email" value="${escapeHtml(q)}" />
+            <input data-records-q type="search" placeholder="Search name or Email ID" value="${escapeHtml(q)}" />
             <button class="btn btn-primary" type="button" data-csv>Download CSV</button>
             <button class="btn" type="button" data-clear-db style="background:#f4ecff;color:var(--pp-purple)">Clear</button>
           </div>
@@ -1632,7 +1609,7 @@ async function renderRecords() {
             ${
               rows
                 ? `<table class="records-table">
-              <thead><tr><th>Time</th><th>Name</th><th>Employee ID</th><th>Email</th><th>Score</th><th>Result</th></tr></thead>
+              <thead><tr><th>Time</th><th>Name</th><th>Email ID</th><th>Score</th><th>Result</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>`
                 : `<p class="records-empty">No scores yet. Play a game to add a record.</p>`

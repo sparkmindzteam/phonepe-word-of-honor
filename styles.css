@@ -381,6 +381,21 @@ button {
   position: static;
 }
 
+.brand-banner-welcome {
+  margin: 0 0 6px;
+  font-size: clamp(16px, 2.8vh, 26px);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: center;
+  text-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.brand-banner-home .brand-banner-title {
+  font-weight: 800;
+}
+
 .brand-banner-sub {
   margin: 8px 0 0;
   font-size: clamp(13px, 2.2vw, 17px);
@@ -1785,9 +1800,9 @@ button {
     font-size: clamp(40px, 4.6vw, 54px);
   }
 
-  .brand-banner-sub {
-    font-size: clamp(16px, 1.6vw, 20px);
-    margin-top: 8px;
+  .brand-banner-welcome {
+    font-size: clamp(18px, 2.2vw, 24px);
+    margin-bottom: 8px;
   }
 
   .form-body,

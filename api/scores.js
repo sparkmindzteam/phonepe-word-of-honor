@@ -47,8 +47,8 @@ export default async function handler(req, res) {
 
   if (req.method === "POST") {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
-    if (!body.name && !body.employeeId) {
-      return res.status(400).json({ ok: false, error: "name or employeeId required" });
+    if (!body.name && !body.email) {
+      return res.status(400).json({ ok: false, error: "name or email required" });
     }
     const rec = {
       id: body.id || `${Date.now()}`,
