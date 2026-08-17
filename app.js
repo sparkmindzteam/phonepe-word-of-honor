@@ -124,6 +124,14 @@ function sectionPoints() {
   return cfg.sectionPoints ?? cfg.quizPoints ?? 25;
 }
 
+function quizSeconds() {
+  return cfg.quizSeconds ?? 30;
+}
+
+function wordFindSeconds() {
+  return cfg.wordFindSeconds ?? 20;
+}
+
 function isFinalMcqRound() {
   return state.questionIndex >= state.roundQuestions.length - 1;
 }
@@ -658,6 +666,7 @@ function startGame() {
   state.revealTarget = false;
   state.scoreSaved = false;
   state.screen = Screen.QUIZ;
+  startQuizClock();
   render();
 }
 
@@ -681,7 +690,7 @@ function startWordFind() {
     return;
   }
 
-  state.remainingMs = (cfg.wordFindSeconds ?? 20) * 1000;
+  state.remainingMs = wordFindSeconds() * 1000;
   state.wordFindStartedAt = nowMs();
   state.screen = Screen.WORDFIND;
   state.selecting = false;
@@ -692,7 +701,7 @@ function startWordFind() {
   clearTimers();
   state.wordFindTimer = setInterval(() => {
     const elapsed = nowMs() - state.wordFindStartedAt;
-    state.remainingMs = Math.max(0, (cfg.wordFindSeconds ?? 20) * 1000 - elapsed);
+    state.remainingMs = Math.max(0, wordFindSeconds() * 1000 - elapsed);
     if (state.remainingMs <= 0) {
       onWordFindTimeout();
     } else {
@@ -703,9 +712,42 @@ function startWordFind() {
   render();
 }
 
+function startQuizClock() {
+  state.remainingMs = quizSeconds() * 1000;
+  state.wordFindStartedAt = nowMs();
+  clearTimers();
+  state.wordFindTimer = setInterval(() => {
+    if (state.screen !== Screen.QUIZ || state.locked) return;
+    const elapsed = nowMs() - state.wordFindStartedAt;
+    state.remainingMs = Math.max(0, quizSeconds() * 1000 - elapsed);
+    if (state.remainingMs <= 0) {
+      void onQuizTimeout();
+    } else {
+      updateQuizTimerUI();
+    }
+  }, 200);
+}
+
+async function onQuizTimeout() {
+  if (state.screen !== Screen.QUIZ || state.locked) return;
+  state.locked = true;
+  clearTimers();
+  const shuffled = ensureShuffledQuiz();
+  state.currentRound = { quiz: 0, word: 0, quizCorrect: false, keywordSkipped: true };
+  state.quizReveal = { picked: -1, correct: shuffled.correctIndex };
+  beep("bad");
+  render();
+  await delay(isFinalMcqRound() ? 2200 : 2000);
+  if (state.screen !== Screen.QUIZ) return;
+  state.quizReveal = null;
+  state.shuffledQuiz = null;
+  finishRound();
+}
+
 async function answerQuiz(optionIndex) {
   if (state.locked || state.screen !== Screen.QUIZ) return;
   state.locked = true;
+  clearTimers();
 
   const shuffled = ensureShuffledQuiz();
   const correct = optionIndex === shuffled.correctIndex;
@@ -857,6 +899,7 @@ function finishRound() {
     endGame();
   } else {
     state.screen = Screen.QUIZ;
+    startQuizClock();
     render();
   }
 }
@@ -1125,11 +1168,19 @@ function displayScore() {
   return state.totalScore + pending;
 }
 
-function updateWordFindTimerUI() {
-  if (state.screen !== Screen.WORDFIND) return;
-  const totalMs = (cfg.wordFindSeconds ?? 20) * 1000;
+function updateTimerHost(totalMs) {
   const host = document.querySelector("[data-timer-host]");
   if (host) host.innerHTML = renderTimerBlock(state.remainingMs, totalMs);
+}
+
+function updateWordFindTimerUI() {
+  if (state.screen !== Screen.WORDFIND) return;
+  updateTimerHost(wordFindSeconds() * 1000);
+}
+
+function updateQuizTimerUI() {
+  if (state.screen !== Screen.QUIZ) return;
+  updateTimerHost(quizSeconds() * 1000);
 }
 
 function renderFeedback() {
@@ -1357,7 +1408,7 @@ function renderQuiz() {
         ${renderBrandBanner()}
         <div class="panel quiz-card" data-ui="quiz-card">
           <div class="quiz-meta">
-            <span class="quiz-topic">${escapeHtml(q.allegation || "Integrity")}</span>
+            <div data-timer-host class="quiz-timer">${renderTimerBlock(state.remainingMs, quizSeconds() * 1000)}</div>
             <span class="quiz-progress">${qLabel} · ${state.questionIndex + 1} / ${total}</span>
           </div>
           <h2 class="quiz-question">${escapeHtml(q.clue)}</h2>
@@ -1365,7 +1416,9 @@ function renderQuiz() {
             reveal
               ? reveal.picked === reveal.correct
                 ? "Correct — unlocking Find the word"
-                : "Incorrect — green option is correct"
+                : reveal.picked < 0
+                  ? "Time's up — green option is correct"
+                  : "Incorrect — green option is correct"
               : "Tap the correct answer"
           }</p>
           <div class="quiz-options">${opts}</div>
@@ -1386,7 +1439,7 @@ function renderWordFind() {
   const q = activeQuestion();
   const categoryLabel = getCategoryLabel(q);
   const answerLabel = getAnswerLabel(q);
-  const totalMs = (cfg.wordFindSeconds ?? 20) * 1000;
+  const totalMs = wordFindSeconds() * 1000;
   const pts = sectionPoints();
   const keywordCount = state.gridData?.words?.length ?? state.roundQuestions.length;
   const gridHtml = buildGridHtml(state.gridData, !state.revealTarget);

@@ -2,6 +2,7 @@
   "orientation": "landscape",
   "kioskResolution": "1920x1080",
   "roundsPerGame": 2,
+  "quizSeconds": 30,
   "wordFindSeconds": 20,
   "idleResetSeconds": 7,
   "sectionPoints": 25,

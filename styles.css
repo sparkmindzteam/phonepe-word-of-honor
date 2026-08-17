@@ -424,15 +424,21 @@ button {
   margin-bottom: 8px;
 }
 
-.quiz-topic {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--pp-purple);
-  background: var(--pp-purple-soft);
-  padding: 5px 10px;
-  border-radius: 999px;
+.quiz-timer {
+  min-width: 0;
+}
+
+.quiz-card .timer-block {
+  margin-bottom: 0;
+}
+
+.quiz-card .timer-ring {
+  width: 42px;
+  height: 42px;
+}
+
+.quiz-card .timer-info .value {
+  font-size: 22px;
 }
 
 .quiz-progress {
