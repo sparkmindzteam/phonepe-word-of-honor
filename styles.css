@@ -682,6 +682,37 @@ button {
   font-weight: 600;
 }
 
+.rules-copy {
+  min-height: 0;
+  overflow: auto;
+  flex: 1;
+}
+
+.rules-copy .form-lead {
+  margin-bottom: clamp(8px, 1.4vh, 14px);
+}
+
+.rules-round {
+  margin: 0 0 clamp(8px, 1.2vh, 14px);
+}
+
+.rules-round-title {
+  font-weight: 800;
+  color: var(--pp-purple);
+  font-size: clamp(14px, 2vh, 17px);
+  margin: 0 0 4px;
+}
+
+.rules-round ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 4px;
+  font-size: clamp(12px, 1.7vh, 14px);
+  color: var(--pp-ink);
+  line-height: 1.4;
+}
+
 .rules-flow {
   margin: 0 0 clamp(8px, 1.5vh, 20px);
   padding-left: 1.2rem;
@@ -698,6 +729,7 @@ button {
   gap: clamp(8px, 1.2vh, 12px);
   margin-bottom: clamp(8px, 1.6vh, 22px);
   min-height: 0;
+  flex-shrink: 0;
 }
 
 .rules-box {
@@ -1729,10 +1761,10 @@ button {
 
 @media (max-height: 740px) {
   .rules-grid {
-    display: none;
+    gap: 8px;
   }
-  .rules-flow {
-    margin-bottom: 8px;
+  .rules-copy .form-lead {
+    margin-bottom: 6px;
   }
   .start-hero .lead {
     display: none;

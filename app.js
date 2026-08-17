@@ -613,12 +613,6 @@ function goRules() {
   render();
 }
 
-function goReady() {
-  state.screen = Screen.START;
-  state.formError = null;
-  render();
-}
-
 function roundsPerGame() {
   return Math.min(cfg.roundsPerGame ?? 2, cfg.questions.length);
 }
@@ -1086,8 +1080,8 @@ function renderBrandBanner({ home = false } = {}) {
   if (home) {
     return `
     <div class="brand-banner brand-banner-home" data-ui="brand-banner">
-      <p class="brand-banner-welcome" data-ui="brand-welcome">Welcome To The</p>
-      <h1 class="brand-banner-title" data-ui="brand-title">Word of Honor</h1>
+      <p class="brand-banner-welcome" data-ui="brand-welcome">Welcome to the</p>
+      <h1 class="brand-banner-title" data-ui="brand-title">Word of Honor!</h1>
     </div>
   `;
   }
@@ -1270,27 +1264,32 @@ function renderEnterDetails() {
 }
 
 function renderRules() {
-  const pts = sectionPoints();
-  const maxScore = roundsPerGame() * pts * 2;
-  const wordSec = cfg.wordFindSeconds ?? 20;
   $app.innerHTML = `
     <div class="screen screen-onboard">
       ${renderHeader("", "", playerChip())}
       <div class="screen-body rules-body">
-        ${renderBrandBanner()}
+        ${renderBrandBanner({ home: true })}
         <div class="panel rules-panel" data-ui="rules-panel">
           <div class="panel-kicker">Game rules</div>
-          <h2 class="form-title">Play across 4 rounds</h2>
-          <p class="form-lead">
-            Answer quizzes, then find integrity keywords on the touch screen.
-            Each correct section awards <strong>${pts} points</strong> (max ${maxScore}).
-          </p>
-          <ol class="rules-flow">
-            <li><strong>Question 1</strong> — correct answer unlocks Find the word.</li>
-            <li><strong>Find the word</strong> — drag left→right or top→bottom (${wordSec}s).</li>
-            <li><strong>Question 2</strong> — wrong answer ends the game.</li>
-            <li><strong>Final keyword</strong> — maximize your score.</li>
-          </ol>
+          <div class="rules-copy">
+            <p class="form-lead">
+              Test your knowledge, sharp eyes, and speed across 2 interactive rounds.
+            </p>
+            <div class="rules-round">
+              <div class="rules-round-title">Round 1</div>
+              <ul>
+                <li><strong>Question 1:</strong> Choose the correct answer within 30 seconds to unlock the first Word Search. (An incorrect answer skips the word search and moves you directly to Round 2.)</li>
+                <li><strong>Word Search 1:</strong> Find the hidden keyword on the touch screen within 20 seconds to earn extra points! (Drag Left-to-Right or Top-to-Bottom)</li>
+              </ul>
+            </div>
+            <div class="rules-round">
+              <div class="rules-round-title">Round 2</div>
+              <ul>
+                <li><strong>Question 2:</strong> Choose the correct answer within 30 seconds to unlock the final Word Search. (An incorrect answer ends the game.)</li>
+                <li><strong>Word Search 2:</strong> Find the final keyword within 20 seconds to maximize your total score!</li>
+              </ul>
+            </div>
+          </div>
           <div class="rules-grid">
             <div class="rules-box">
               <div class="rules-box-title">Score messages</div>
@@ -1312,50 +1311,12 @@ function renderRules() {
               </ul>
             </div>
           </div>
-          <button class="btn btn-primary" data-continue>I Understand</button>
+          <button class="btn btn-primary" data-start-game>Start the game</button>
         </div>
       </div>
     </div>
   `;
-  document.querySelector("[data-continue]")?.addEventListener("pointerdown", goReady);
-}
-
-function renderStart() {
-  const pts = sectionPoints();
-  const maxScore = roundsPerGame() * pts * 2;
-  const total = roundsPerGame();
-  $app.innerHTML = `
-    <div class="screen screen-ready">
-      ${renderHeader("", "", playerChip())}
-      <div class="start-hero" data-ui="start-hero">
-        ${renderBrandBanner()}
-        <h2 class="start-hero-title">Ready, <span>${escapeHtml(state.playerName)}</span>?</h2>
-        <p class="lead">
-          ${total} questions · find the keyword after each correct answer · max
-          <strong>${maxScore} points</strong>
-        </p>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-title">Answer</div>
-            <div class="step-desc">Pick the right option · +${pts} pts</div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-title">Find the word</div>
-            <div class="step-desc">Locate the keyword · +${pts} pts</div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-title">Repeat</div>
-            <div class="step-desc">Question 2 until the game ends</div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-hero" data-start>Start Game</button>
-      </div>
-    </div>
-  `;
-  document.querySelector("[data-start]")?.addEventListener("pointerdown", () => {
+  document.querySelector("[data-start-game]")?.addEventListener("pointerdown", () => {
     try {
       document.documentElement.requestFullscreen?.().catch(() => {});
     } catch {}
@@ -1638,7 +1599,6 @@ function render() {
   if (recordsOpen || new URLSearchParams(location.search).get("records") === "1") return renderRecords();
   if (state.screen === Screen.ENTER_DETAILS) return renderEnterDetails();
   if (state.screen === Screen.RULES) return renderRules();
-  if (state.screen === Screen.START) return renderStart();
   if (state.screen === Screen.QUIZ) return renderQuiz();
   if (state.screen === Screen.WORDFIND) return renderWordFind();
   if (state.screen === Screen.END) return renderEnd();
