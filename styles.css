@@ -617,6 +617,50 @@ button {
   box-shadow: 0 0 0 4px rgba(95, 37, 159, 0.14);
 }
 
+.field-email {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: clamp(50px, 6.4vh, 58px);
+  border: 2px solid var(--pp-line);
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field-email:focus-within {
+  border-color: var(--pp-purple);
+  box-shadow: 0 0 0 4px rgba(95, 37, 159, 0.14);
+}
+
+.field-email .field-input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+
+.field-email .field-input:focus {
+  box-shadow: none;
+}
+
+.field-email-suffix {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 14px 0 10px;
+  background: var(--pp-purple-soft);
+  color: var(--pp-purple);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 .form-error {
   color: var(--pp-red);
   font-size: 14px;
@@ -1776,6 +1820,10 @@ button {
     padding: 0 20px;
   }
 
+  .field-email {
+    min-height: 64px;
+  }
+
   .btn-primary {
     width: min(360px, 100%);
     min-height: 64px;
@@ -1828,6 +1876,10 @@ button {
     min-height: 70px;
     line-height: 66px;
     font-size: 20px;
+  }
+
+  .field-email {
+    min-height: 70px;
   }
 
   .quiz-card {

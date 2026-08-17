@@ -54,6 +54,7 @@ export default async function handler(req, res) {
       id: body.id || `${Date.now()}`,
       name: String(body.name || "").trim(),
       employeeId: String(body.employeeId || "").trim(),
+      email: String(body.email || "").trim(),
       score: Number(body.score) || 0,
       maxScore: Number(body.maxScore) || 0,
       feedback: String(body.feedback || ""),
