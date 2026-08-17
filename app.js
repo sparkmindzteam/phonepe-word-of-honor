@@ -575,7 +575,7 @@ function validateEmployeeId(value) {
   return null;
 }
 
-const EMAIL_SUFFIX = "@phonepay.com";
+const EMAIL_SUFFIX = "@phonepe.com";
 
 function emailLocalPart(value) {
   const v = String(value || "").trim();
@@ -589,7 +589,7 @@ function toOfficialEmail(value) {
 
 function validateEmail(value) {
   const local = emailLocalPart(value);
-  if (local.length < 2) return "Please enter your email before @phonepay.com.";
+  if (local.length < 2) return "Please enter your email before @phonepe.com.";
   if (local.length > 64) return "Email is too long.";
   if (!/^[A-Za-z0-9._+-]+$/.test(local)) return "Email can only use letters, numbers, . _ + -";
   if (local.startsWith(".") || local.endsWith(".") || local.includes("..")) {
