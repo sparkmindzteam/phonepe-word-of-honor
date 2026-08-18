@@ -1991,23 +1991,6 @@ function renderEnd() {
   const maxScore = roundsPerGame() * pts * 2;
   const feedback = getScoreFeedback(state.totalScore);
 
-  const rows = state.roundScores
-    .map((r, i) => {
-      const q = state.roundQuestions[i];
-      const qName = questionLabel(i);
-      const kwName = "Find the word";
-      return `
-        <div class="score-row">
-          <div class="score-q">${qName}: ${escapeHtml(q.allegation || q.clue)}</div>
-          <div class="score-detail">
-            ${r.quizCorrect ? `+${r.quiz}` : "0"}
-            · ${kwName}: ${r.keywordSkipped ? "NA" : r.quizCorrect ? (r.word > 0 ? `+${r.word}` : "0") : "NA"}
-            · <strong>${r.total} pts</strong>
-          </div>
-        </div>`;
-    })
-    .join("");
-
   $app.innerHTML = `
     <div class="screen screen-end">
       ${renderHeader("", "", playerChip())}
@@ -2018,7 +2001,6 @@ function renderEnd() {
           <div class="final-score">${state.totalScore}</div>
           <div class="final-score-label">out of ${maxScore}</div>
           <div class="end-feedback">${escapeHtml(feedback)}</div>
-          <div class="score-breakdown">${rows}</div>
         </div>
       </div>
     </div>
