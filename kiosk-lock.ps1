@@ -1,4 +1,5 @@
-# Locked kiosk: PowerShell file server + fullscreen Edge. Press Escape to exit.
+# Locked kiosk, or admin window with -Admin.
+param([switch]$Admin)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -14,6 +15,16 @@ $edgeProc = $null
 $script:regBackup = @()
 $script:listener = $null
 $script:serverRunspace = $null
+$script:startedServer = $false
+
+function Test-LocalServer {
+  try {
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 "http://127.0.0.1:$port/" | Out-Null
+    return $true
+  } catch {
+    return $false
+  }
+}
 
 function Get-Browser {
   $paths = @(
@@ -284,6 +295,7 @@ function Start-LocalServer {
   })
   $script:serverRunspace = $rs
   [void]$ps.BeginInvoke()
+  $script:startedServer = $true
 }
 
 function Stop-LocalServer {
@@ -301,28 +313,42 @@ function Stop-KioskBrowser {
 }
 
 try {
-  Write-Host "Starting locked kiosk..."
-  Write-Host "Press ESC to unlock and exit."
   Ensure-Data
-  Enable-GestureLock
-  Start-LocalServer
-  Start-Sleep -Milliseconds 400
-
   $browser = Get-Browser
-  $browserArgs = @(
-    "--kiosk", $url,
-    "--edge-kiosk-type=fullscreen",
-    "--no-first-run",
-    "--disable-pinch",
-    "--overscroll-history-navigation=0",
-    "--disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI",
-    "--user-data-dir=$profileDir"
-  )
-  $edgeProc = Start-Process -FilePath $browser -ArgumentList $browserArgs -PassThru
-  [PhonePeKioskLock]::Install()
-  while (-not [PhonePeKioskLock]::ExitRequested) {
-    if ($edgeProc -and $edgeProc.HasExited) { break }
-    Start-Sleep -Milliseconds 150
+
+  if ($Admin) {
+    Write-Host "Opening admin page..."
+    Write-Host "Press Ctrl+Shift+L for kiosk controls."
+    if (-not (Test-LocalServer)) { Start-LocalServer; Start-Sleep -Milliseconds 400 }
+    $adminUrl = "http://127.0.0.1:$port/admin"
+    $edgeProc = Start-Process -FilePath $browser -ArgumentList @($adminUrl) -PassThru
+    Write-Host $adminUrl
+    if ($edgeProc) {
+      Wait-Process -Id $edgeProc.Id -ErrorAction SilentlyContinue
+    } else {
+      Write-Host "Close this window when you are finished."
+      pause
+    }
+  } else {
+    Write-Host "Starting locked kiosk..."
+    Write-Host "Press ESC to unlock and exit."
+    Enable-GestureLock
+    if (-not (Test-LocalServer)) { Start-LocalServer; Start-Sleep -Milliseconds 400 }
+    $browserArgs = @(
+      "--kiosk", $url,
+      "--edge-kiosk-type=fullscreen",
+      "--no-first-run",
+      "--disable-pinch",
+      "--overscroll-history-navigation=0",
+      "--disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI",
+      "--user-data-dir=$profileDir"
+    )
+    $edgeProc = Start-Process -FilePath $browser -ArgumentList $browserArgs -PassThru
+    [PhonePeKioskLock]::Install()
+    while (-not [PhonePeKioskLock]::ExitRequested) {
+      if ($edgeProc -and $edgeProc.HasExited) { break }
+      Start-Sleep -Milliseconds 150
+    }
   }
 }
 catch {
@@ -333,9 +359,11 @@ catch {
   pause
 }
 finally {
-  try { [PhonePeKioskLock]::Uninstall() } catch {}
-  Stop-KioskBrowser
-  Stop-LocalServer
-  Restore-GestureLock
-  Write-Host "Kiosk unlocked."
+  if (-not $Admin) {
+    try { [PhonePeKioskLock]::Uninstall() } catch {}
+    Stop-KioskBrowser
+    Restore-GestureLock
+    Write-Host "Kiosk unlocked."
+  }
+  if ($script:startedServer) { Stop-LocalServer }
 }

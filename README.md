@@ -24,6 +24,8 @@ Wrong Q1 skips that word search. Wrong Q2 ends the game.
 
 Double-click **`start-local.bat`**. The game opens in locked kiosk mode (fullscreen, no back, no Windows home swipe). **Press ESC to unlock and exit.**
 
+Double-click **`start-admin.bat`** for the admin page. Press **Ctrl+Shift+L** for kiosk controls.
+
 - Player: http://127.0.0.1:5173
 - Admin: http://127.0.0.1:5173/admin (Ctrl+Shift+L)
 
