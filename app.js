@@ -534,6 +534,62 @@ const Screen = {
 let cfg;
 let gridAbort = null;
 let recordsOpen = false;
+let adminOpen = false;
+let vkTargetId = null;
+let vkShift = false;
+
+const KEYBOARD_MODE_KEY = "phonepe_keyboard_mode";
+const KEYBOARD_MODES = ["both", "virtual", "usb"];
+
+function isAdminLink() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("admin") === "1") return true;
+  const path = String(location.pathname || "").replace(/\/+$/, "").toLowerCase();
+  return path.endsWith("/admin") || path.endsWith("/admin.html");
+}
+
+function getKeyboardMode() {
+  try {
+    const v = localStorage.getItem(KEYBOARD_MODE_KEY);
+    if (KEYBOARD_MODES.includes(v)) return v;
+  } catch {}
+  return "both";
+}
+
+function setKeyboardMode(mode) {
+  if (!KEYBOARD_MODES.includes(mode)) return;
+  try {
+    localStorage.setItem(KEYBOARD_MODE_KEY, mode);
+  } catch {}
+}
+
+function virtualKeyboardEnabled() {
+  const mode = getKeyboardMode();
+  return mode === "virtual" || mode === "both";
+}
+
+function usbKeyboardEnabled() {
+  const mode = getKeyboardMode();
+  return mode === "usb" || mode === "both";
+}
+
+function ensureHost(id, className) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = id;
+    if (className) el.className = className;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function snapshotDetailsForm() {
+  const nameEl = document.getElementById("player-name");
+  const emailEl = document.getElementById("player-email");
+  if (nameEl) state.playerName = nameEl.value;
+  if (emailEl) state.playerEmail = toOfficialEmail(emailEl.value);
+}
 let state = {
   screen: Screen.ENTER_DETAILS,
   playerName: "",
@@ -1035,6 +1091,8 @@ function endGame() {
 
 function goStart() {
   recordsOpen = false;
+  closeAdminPanel();
+  hideVirtualKeyboard();
   clearTimers();
   clearGridHandlers();
   state.screen = Screen.ENTER_DETAILS;
@@ -1108,12 +1166,13 @@ function timerColor(ms, totalMs) {
 }
 
 function renderHeader(_title, _subtitle, chips = "") {
+  const adminChip = isAdminLink() ? `<span class="chip">Admin</span>` : "";
   return `
     <header class="header" data-ui="header">
       <button type="button" class="brand" data-ui="logo-wrap" data-home aria-label="Home">
         <img class="logo-img" data-ui="logo" src="./assets/logo.png" alt="PhonePe" width="148" height="40" />
       </button>
-      <div class="header-meta" data-ui="header-meta">${chips}</div>
+      <div class="header-meta" data-ui="header-meta">${adminChip}${chips}</div>
     </header>
   `;
 }
@@ -1250,6 +1309,351 @@ function attachFormSubmit(selector, onSubmit) {
   input?.focus();
 }
 
+function vkTarget() {
+  return vkTargetId ? document.getElementById(vkTargetId) : null;
+}
+
+function hideVirtualKeyboard() {
+  const root = document.getElementById("vk-root");
+  if (root) {
+    root.hidden = true;
+    root.innerHTML = "";
+  }
+  document.body.classList.remove("vk-open");
+  document.body.style.removeProperty("--vk-h");
+}
+
+function focusPlayerField(el) {
+  if (!el) return;
+  vkTargetId = el.id;
+  document.querySelectorAll(".field-input").forEach((n) => n.classList.toggle("vk-focus", n === el));
+  try {
+    el.focus({ preventScroll: true });
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  } catch {}
+  if (virtualKeyboardEnabled() && !adminOpen) showVirtualKeyboard();
+}
+
+function vkApplyValue(el, next, caret) {
+  const max = Number(el.getAttribute("maxlength")) || 80;
+  let value = next.slice(0, max);
+  if (el.id === "player-email") value = emailLocalPart(value);
+  el.value = value;
+  const pos = Math.max(0, Math.min(value.length, caret));
+  try {
+    el.setSelectionRange(pos, pos);
+  } catch {}
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function vkInsert(text) {
+  const el = vkTarget();
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const next = `${el.value.slice(0, start)}${text}${el.value.slice(end)}`;
+  vkApplyValue(el, next, start + text.length);
+}
+
+function vkBackspace() {
+  const el = vkTarget();
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  if (start !== end) {
+    vkApplyValue(el, `${el.value.slice(0, start)}${el.value.slice(end)}`, start);
+    return;
+  }
+  if (start <= 0) return;
+  vkApplyValue(el, `${el.value.slice(0, start - 1)}${el.value.slice(start)}`, start - 1);
+}
+
+function vkGoNext() {
+  const nameEl = document.getElementById("player-name");
+  const emailEl = document.getElementById("player-email");
+  if (vkTargetId === "player-name" && emailEl) {
+    focusPlayerField(emailEl);
+    return;
+  }
+  document.querySelector("[data-form=details]")?.requestSubmit();
+}
+
+function vkKeyLabel(key) {
+  if (key.length !== 1) return key;
+  return vkShift ? key.toUpperCase() : key.toLowerCase();
+}
+
+function showVirtualKeyboard() {
+  if (!virtualKeyboardEnabled() || adminOpen) return;
+  const root = ensureHost("vk-root", "vk-root");
+  const mode = getKeyboardMode();
+  const hint =
+    mode === "both"
+      ? "Touch keys or type on a USB keyboard"
+      : "Touchscreen keyboard";
+  const row = (keys, extra = "") =>
+    `<div class="vk-row ${extra}">${keys
+      .map((k) => {
+        if (k === "shift") {
+          return `<button type="button" class="vk-key vk-wide ${vkShift ? "is-on" : ""}" data-vk-act="shift">Shift</button>`;
+        }
+        if (k === "back") {
+          return `<button type="button" class="vk-key vk-wide vk-danger" data-vk-act="back">⌫</button>`;
+        }
+        if (k === "space") {
+          return `<button type="button" class="vk-key vk-space" data-vk-act="space">Space</button>`;
+        }
+        if (k === "next") {
+          const last = vkTargetId === "player-email";
+          return `<button type="button" class="vk-key vk-wide vk-accent" data-vk-act="next">${last ? "Done" : "Next"}</button>`;
+        }
+        const label = vkKeyLabel(k);
+        return `<button type="button" class="vk-key" data-vk-act="char" data-vk-char="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
+      })
+      .join("")}</div>`;
+
+  root.hidden = false;
+  root.innerHTML = `
+    <div class="vk-shell" data-vk>
+      <div class="vk-bar">
+        <strong>On-screen keyboard</strong>
+        <span>${hint}</span>
+      </div>
+      ${row(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])}
+      ${row(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])}
+      ${row(["a", "s", "d", "f", "g", "h", "j", "k", "l"])}
+      ${row(["shift", "z", "x", "c", "v", "b", "n", "m", "back"])}
+      ${row([".", "_", "-", "+", "@", "space", "next"], "vk-row-action")}
+    </div>
+  `;
+  document.body.classList.add("vk-open");
+  requestAnimationFrame(() => {
+    const shell = root.querySelector(".vk-shell");
+    if (shell) document.body.style.setProperty("--vk-h", `${shell.offsetHeight + 22}px`);
+  });
+  root.querySelectorAll("[data-vk-act]").forEach((btn) => {
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const act = btn.getAttribute("data-vk-act");
+      if (act === "shift") {
+        vkShift = !vkShift;
+        showVirtualKeyboard();
+        return;
+      }
+      if (act === "back") vkBackspace();
+      else if (act === "space") vkInsert(" ");
+      else if (act === "next") vkGoNext();
+      else if (act === "char") {
+        vkInsert(btn.getAttribute("data-vk-char") || "");
+        if (vkShift) {
+          vkShift = false;
+          showVirtualKeyboard();
+        }
+      }
+      focusPlayerField(vkTarget());
+    });
+  });
+}
+
+function attachPlayerKeyboard() {
+  const inputs = [document.getElementById("player-name"), document.getElementById("player-email")].filter(Boolean);
+  const useVk = virtualKeyboardEnabled();
+  inputs.forEach((el) => {
+    el.setAttribute("autocomplete", "off");
+    el.setAttribute("autocapitalize", "off");
+    el.setAttribute("spellcheck", "false");
+    el.setAttribute("inputmode", "none");
+    if (useVk) {
+      el.setAttribute("readonly", "readonly");
+      el.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        focusPlayerField(el);
+      });
+    } else {
+      el.removeAttribute("readonly");
+      el.setAttribute("inputmode", el.id === "player-email" ? "email" : "text");
+    }
+  });
+  if (useVk && !adminOpen) {
+    const prefer = vkTarget() || document.getElementById("player-name");
+    focusPlayerField(prefer);
+  } else {
+    hideVirtualKeyboard();
+    document.getElementById("player-name")?.focus();
+  }
+}
+
+function handleUsbTyping(e) {
+  if (adminOpen || recordsOpen) return false;
+  if (state.screen !== Screen.ENTER_DETAILS) return false;
+  const el = document.activeElement?.classList?.contains("field-input")
+    ? document.activeElement
+    : vkTarget();
+  if (!el?.classList?.contains("field-input")) return false;
+
+  const mode = getKeyboardMode();
+  if (mode === "virtual") {
+    e.preventDefault();
+    return true;
+  }
+  if (mode === "usb") return false;
+  // both: inject so the OS keyboard stays closed on kiosk TVs
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (e.key === "Tab") {
+    e.preventDefault();
+    vkTargetId = el.id;
+    vkGoNext();
+    return true;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    vkTargetId = el.id;
+    vkGoNext();
+    return true;
+  }
+  if (e.key === "Backspace") {
+    e.preventDefault();
+    vkTargetId = el.id;
+    vkBackspace();
+    return true;
+  }
+  if (e.key === " ") {
+    e.preventDefault();
+    vkTargetId = el.id;
+    vkInsert(" ");
+    return true;
+  }
+  if (e.key.length === 1) {
+    e.preventDefault();
+    vkTargetId = el.id;
+    vkInsert(e.key);
+    return true;
+  }
+  return false;
+}
+
+function closeAdminPanel() {
+  adminOpen = false;
+  const root = document.getElementById("admin-root");
+  if (root) {
+    root.hidden = true;
+    root.innerHTML = "";
+  }
+  document.body.classList.remove("admin-open");
+  if (state.screen === Screen.ENTER_DETAILS && virtualKeyboardEnabled()) {
+    showVirtualKeyboard();
+    focusPlayerField(vkTarget() || document.getElementById("player-name"));
+  }
+}
+
+async function openAdminPanel() {
+  if (!isAdminLink()) return;
+  adminOpen = true;
+  hideVirtualKeyboard();
+  snapshotDetailsForm();
+  const root = ensureHost("admin-root", "admin-root");
+  root.hidden = false;
+  document.body.classList.add("admin-open");
+  await hydrateScoreDb();
+  const q = String(root.querySelector("[data-admin-q]")?.value || "").trim().toLowerCase();
+  const all = loadScoreDb().slice().reverse();
+  const list = q
+    ? all.filter(
+        (r) =>
+          String(r.name || "").toLowerCase().includes(q) ||
+          String(r.email || "").toLowerCase().includes(q),
+      )
+    : all;
+  const rows = list
+    .map(
+      (r) => `
+      <tr>
+        <td>${escapeHtml(formatRecordTime(r.at))}</td>
+        <td>${escapeHtml(r.name || "")}</td>
+        <td>${escapeHtml(r.email || "")}</td>
+        <td><strong>${Number(r.score) || 0}</strong> / ${Number(r.maxScore) || 0}</td>
+        <td>${escapeHtml(r.feedback || "")}</td>
+      </tr>`,
+    )
+    .join("");
+  const mode = getKeyboardMode();
+  const modeBtn = (id, title, desc) => `
+    <button type="button" class="admin-mode ${mode === id ? "is-on" : ""}" data-kb-mode="${id}">
+      <strong>${title}</strong>
+      <span>${desc}</span>
+    </button>`;
+  root.innerHTML = `
+    <div class="admin-overlay" data-admin>
+      <div class="admin-panel">
+        <div class="admin-head">
+          <div>
+            <div class="panel-kicker">Admin</div>
+            <h2 class="form-title">Kiosk controls</h2>
+            <p class="form-lead">Ctrl+L to close · USB keyboard required for this panel</p>
+          </div>
+          <button type="button" class="btn btn-primary" data-admin-close>Close</button>
+        </div>
+        <div class="admin-block">
+          <div class="section-label">Keyboard in use</div>
+          <div class="admin-modes">
+            ${modeBtn("both", "Both", "On-screen keyboard and USB keyboard")}
+            ${modeBtn("virtual", "Virtual only", "Touchscreen keyboard. USB typing is off for players.")}
+            ${modeBtn("usb", "USB only", "Physical keyboard. Hide the on-screen keyboard.")}
+          </div>
+        </div>
+        <div class="admin-block admin-records">
+          <div class="section-label">Player records</div>
+          <div class="records-toolbar">
+            <input data-admin-q class="admin-search" type="search" placeholder="Search name or Email ID" value="${escapeHtml(q)}" />
+            <button class="btn btn-primary" type="button" data-csv>Download CSV</button>
+            <button class="btn" type="button" data-clear-db style="background:#f4ecff;color:var(--pp-purple)">Clear</button>
+          </div>
+          <p class="records-count">${list.length} of ${all.length} games</p>
+          <div class="records-table-wrap">
+            ${
+              rows
+                ? `<table class="records-table">
+              <thead><tr><th>Time</th><th>Name</th><th>Email ID</th><th>Score</th><th>Result</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>`
+                : `<p class="records-empty">No scores yet. Play a game to add a record.</p>`
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  root.querySelector("[data-admin-close]")?.addEventListener("pointerdown", () => closeAdminPanel());
+  root.querySelectorAll("[data-kb-mode]").forEach((btn) => {
+    btn.addEventListener("pointerdown", () => {
+      snapshotDetailsForm();
+      setKeyboardMode(btn.getAttribute("data-kb-mode"));
+      render();
+      void openAdminPanel();
+    });
+  });
+  const search = root.querySelector("[data-admin-q]");
+  search?.addEventListener("input", () => openAdminPanel());
+  search?.focus();
+  root.querySelector("[data-csv]")?.addEventListener("pointerdown", () => downloadScoreCsv(list));
+  root.querySelector("[data-clear-db]")?.addEventListener("pointerdown", async () => {
+    if (!confirm("Clear all score records on this kiosk?")) return;
+    saveScoreDb([]);
+    try {
+      await idbReplaceAllScores([]);
+    } catch {}
+    void openAdminPanel();
+  });
+}
+
+function toggleAdminPanel() {
+  if (!isAdminLink()) return;
+  if (adminOpen) closeAdminPanel();
+  else void openAdminPanel();
+}
+
 function renderEnterDetails() {
   $app.innerHTML = `
     <div class="screen screen-onboard">
@@ -1258,7 +1662,9 @@ function renderEnterDetails() {
         ${renderBrandBanner({ home: true })}
         <div class="panel form-card" data-ui="form-card">
           <h2 class="form-title">Enter your details</h2>
-          <p class="form-lead">Name and Email ID to begin.</p>
+          <p class="form-lead">Name and Email ID to begin.${
+            virtualKeyboardEnabled() ? " Use the on-screen keyboard or a USB keyboard." : ""
+          }</p>
           <form class="player-form" data-form="details">
             <div class="field-group">
               <label class="field-label" for="player-name">Name</label>
@@ -1291,6 +1697,7 @@ function renderEnterDetails() {
       state.formError = nameErr;
       state.playerName = name;
       state.playerEmail = email;
+      vkTargetId = "player-name";
       render();
       return;
     }
@@ -1299,8 +1706,8 @@ function renderEnterDetails() {
       state.formError = emailErr;
       state.playerName = name;
       state.playerEmail = email;
+      vkTargetId = "player-email";
       render();
-      document.getElementById("player-email")?.focus();
       return;
     }
     state.playerName = name;
@@ -1312,6 +1719,7 @@ function renderEnterDetails() {
     const el = e.target;
     if (el.value.includes("@")) el.value = emailLocalPart(el.value);
   });
+  attachPlayerKeyboard();
 }
 
 function renderRules() {
@@ -1628,6 +2036,7 @@ async function renderRecords() {
 
 function render() {
   if (!cfg) return;
+  if (state.screen !== Screen.ENTER_DETAILS) hideVirtualKeyboard();
   if (recordsOpen || new URLSearchParams(location.search).get("records") === "1") return renderRecords();
   if (state.screen === Screen.ENTER_DETAILS) return renderEnterDetails();
   if (state.screen === Screen.RULES) return renderRules();
@@ -1739,10 +2148,25 @@ function updateGridSelectionUI() {
   window.addEventListener("resize", syncWordfindLayout);
   window.addEventListener("orientationchange", () => setTimeout(syncWordfindLayout, 80));
   window.addEventListener("keydown", (e) => {
-    if (!e.ctrlKey || e.altKey || e.shiftKey) return;
-    if (e.code !== "KeyD" && e.key !== "d" && e.key !== "D") return;
-    e.preventDefault();
-    recordsOpen = !recordsOpen;
-    render();
+    if (e.key === "Escape" && adminOpen) {
+      e.preventDefault();
+      closeAdminPanel();
+      return;
+    }
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === "KeyL" || e.key === "l" || e.key === "L")) {
+      if (!isAdminLink()) return;
+      e.preventDefault();
+      toggleAdminPanel();
+      return;
+    }
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === "KeyD" || e.key === "d" || e.key === "D")) {
+      if (!isAdminLink()) return;
+      e.preventDefault();
+      recordsOpen = !recordsOpen;
+      if (recordsOpen) closeAdminPanel();
+      render();
+      return;
+    }
+    handleUsbTyping(e);
   });
 })();
