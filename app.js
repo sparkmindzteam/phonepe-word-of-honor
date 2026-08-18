@@ -567,6 +567,9 @@ const TIMER_LIMITS = {
   idleResetSeconds: { min: 3, max: 60, step: 1, fallback: 7, presets: [5, 7, 10, 15, 20] },
 };
 
+let settingsCache = null;
+let lastSyncedSettingsKey = "";
+
 function clampTimer(key, value) {
   const lim = TIMER_LIMITS[key];
   const n = Math.round(Number(value));
@@ -574,12 +577,8 @@ function clampTimer(key, value) {
   return Math.max(lim.min, Math.min(lim.max, n));
 }
 
-function loadSettings() {
-  let stored = {};
-  try {
-    stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
-  } catch {}
-  let keyboardMode = stored.keyboardMode;
+function normalizeSettings(stored) {
+  let keyboardMode = stored?.keyboardMode;
   if (!KEYBOARD_MODES.includes(keyboardMode)) {
     try {
       keyboardMode = localStorage.getItem(KEYBOARD_MODE_KEY);
@@ -588,23 +587,60 @@ function loadSettings() {
   if (!KEYBOARD_MODES.includes(keyboardMode)) keyboardMode = "both";
   return {
     keyboardMode,
-    quizSeconds: clampTimer("quizSeconds", stored.quizSeconds ?? cfg?.quizSeconds ?? 30),
-    wordFindSeconds: clampTimer("wordFindSeconds", stored.wordFindSeconds ?? cfg?.wordFindSeconds ?? 20),
-    idleResetSeconds: clampTimer("idleResetSeconds", stored.idleResetSeconds ?? cfg?.idleResetSeconds ?? 7),
+    quizSeconds: clampTimer("quizSeconds", stored?.quizSeconds ?? cfg?.quizSeconds ?? 30),
+    wordFindSeconds: clampTimer("wordFindSeconds", stored?.wordFindSeconds ?? cfg?.wordFindSeconds ?? 20),
+    idleResetSeconds: clampTimer("idleResetSeconds", stored?.idleResetSeconds ?? cfg?.idleResetSeconds ?? 7),
   };
 }
 
-function saveSettings(patch) {
-  const next = { ...loadSettings(), ...patch };
-  next.quizSeconds = clampTimer("quizSeconds", next.quizSeconds);
-  next.wordFindSeconds = clampTimer("wordFindSeconds", next.wordFindSeconds);
-  next.idleResetSeconds = clampTimer("idleResetSeconds", next.idleResetSeconds);
-  if (!KEYBOARD_MODES.includes(next.keyboardMode)) next.keyboardMode = "both";
+function persistSettingsLocal(next) {
+  settingsCache = next;
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
     localStorage.setItem(KEYBOARD_MODE_KEY, next.keyboardMode);
   } catch {}
+}
+
+function loadSettings() {
+  if (settingsCache) return settingsCache;
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
+  } catch {}
+  settingsCache = normalizeSettings(stored);
+  return settingsCache;
+}
+
+function saveSettings(patch) {
+  const next = normalizeSettings({ ...loadSettings(), ...patch });
+  persistSettingsLocal(next);
+  lastSyncedSettingsKey = JSON.stringify(next);
+  fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(next),
+  }).catch(() => {});
   return next;
+}
+
+async function syncSettingsFromServer() {
+  try {
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (!res.ok) return loadSettings();
+    const data = await res.json();
+    if (!data?.settings || typeof data.settings !== "object") return loadSettings();
+    const next = normalizeSettings(data.settings);
+    const key = JSON.stringify(next);
+    const changed = key !== lastSyncedSettingsKey;
+    persistSettingsLocal(next);
+    lastSyncedSettingsKey = key;
+    if (changed && state.screen === Screen.ENTER_DETAILS && !adminOpen && !recordsOpen) {
+      render();
+    }
+    return next;
+  } catch {
+    return loadSettings();
+  }
 }
 
 function isAdminLink() {
@@ -2217,6 +2253,7 @@ function updateGridSelectionUI() {
   hydrateScoreDb().catch(() => {});
   try {
     cfg = await loadConfig();
+    await syncSettingsFromServer();
     goStart();
   } catch (err) {
     $app.innerHTML = `<div class="screen"><div class="card card-sm" style="margin:40px auto;max-width:600px">
@@ -2255,4 +2292,5 @@ function updateGridSelectionUI() {
     },
     true,
   );
+  setInterval(() => { syncSettingsFromServer().catch(() => {}); }, 2000);
 })();

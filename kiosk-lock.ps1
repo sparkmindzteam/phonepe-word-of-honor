@@ -10,7 +10,9 @@ $profileDir = Join-Path $env:TEMP "phonepe-kiosk-profile"
 $dataDir = Join-Path $root "data"
 $scoresJson = Join-Path $dataDir "scores.json"
 $scoresCsv = Join-Path $dataDir "scores.csv"
+$settingsJson = Join-Path $dataDir "settings.json"
 $onlineUrl = "https://phonepe-word-of-honor.vercel.app/api/scores"
+$onlineSettingsUrl = "https://phonepe-word-of-honor.vercel.app/api/settings"
 $edgeProc = $null
 $script:regBackup = @()
 $script:listener = $null
@@ -178,8 +180,10 @@ function Start-LocalServer {
   $rs.SessionStateProxy.SetVariable("root", $root)
   $rs.SessionStateProxy.SetVariable("scoresJson", $scoresJson)
   $rs.SessionStateProxy.SetVariable("scoresCsv", $scoresCsv)
+  $rs.SessionStateProxy.SetVariable("settingsJson", $settingsJson)
   $rs.SessionStateProxy.SetVariable("dataDir", $dataDir)
   $rs.SessionStateProxy.SetVariable("onlineUrl", $onlineUrl)
+  $rs.SessionStateProxy.SetVariable("onlineSettingsUrl", $onlineSettingsUrl)
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
   [void]$ps.AddScript({
@@ -275,6 +279,51 @@ function Start-LocalServer {
               $onlineOk = $true
             } catch {}
             WriteJson $ctx 201 @{ ok = $true; savedLocal = $true; savedOnline = $onlineOk }
+            continue
+          }
+        }
+        if ($path -eq "/api/settings" -or $path -eq "/api/settings/") {
+          function LoadSettingsFile {
+            try {
+              if (Test-Path $settingsJson) {
+                $s = (Get-Content -Raw $settingsJson) | ConvertFrom-Json
+                if ($s) { return $s }
+              }
+            } catch {}
+            return $null
+          }
+          if ($ctx.Request.HttpMethod -eq "GET") {
+            [void][System.Threading.Monitor]::Enter($lock)
+            try { $settings = LoadSettingsFile } finally { [System.Threading.Monitor]::Exit($lock) }
+            if (-not $settings) {
+              try { $settings = Invoke-RestMethod -Method Get -Uri $onlineSettingsUrl -TimeoutSec 8 } catch {}
+              if ($settings.settings) { $settings = $settings.settings }
+            }
+            if (-not $settings) {
+              $settings = @{ keyboardMode = "both"; quizSeconds = 30; wordFindSeconds = 20; idleResetSeconds = 7 }
+            }
+            WriteJson $ctx 200 @{ ok = $true; settings = $settings; source = "shared" }
+            continue
+          }
+          if ($ctx.Request.HttpMethod -eq "POST") {
+            $reader = New-Object IO.StreamReader($ctx.Request.InputStream, $ctx.Request.ContentEncoding)
+            $raw = $reader.ReadToEnd(); $reader.Close()
+            $body = $raw | ConvertFrom-Json
+            $settings = @{
+              keyboardMode = [string]$body.keyboardMode
+              quizSeconds = [int]$body.quizSeconds
+              wordFindSeconds = [int]$body.wordFindSeconds
+              idleResetSeconds = [int]$body.idleResetSeconds
+            }
+            [void][System.Threading.Monitor]::Enter($lock)
+            try {
+              if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
+              Set-Content -Path $settingsJson -Value ($settings | ConvertTo-Json -Compress) -Encoding UTF8
+            } finally { [System.Threading.Monitor]::Exit($lock) }
+            try {
+              Invoke-RestMethod -Method Post -Uri $onlineSettingsUrl -ContentType "application/json" -Body ($settings | ConvertTo-Json -Compress) -TimeoutSec 12 | Out-Null
+            } catch {}
+            WriteJson $ctx 200 @{ ok = $true; settings = $settings }
             continue
           }
         }
