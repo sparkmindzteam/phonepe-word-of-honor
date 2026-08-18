@@ -1430,11 +1430,6 @@ function vkKeyLabel(key) {
 function showVirtualKeyboard() {
   if (!virtualKeyboardEnabled() || adminOpen) return;
   const root = ensureHost("vk-root", "vk-root");
-  const mode = getKeyboardMode();
-  const hint =
-    mode === "both"
-      ? "Touch keys or type on a USB keyboard"
-      : "Touchscreen keyboard";
   const row = (keys, extra = "") =>
     `<div class="vk-row ${extra}">${keys
       .map((k) => {
@@ -1459,10 +1454,6 @@ function showVirtualKeyboard() {
   root.hidden = false;
   root.innerHTML = `
     <div class="vk-shell" data-vk>
-      <div class="vk-bar">
-        <strong>On-screen keyboard</strong>
-        <span>${hint}</span>
-      </div>
       ${row(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])}
       ${row(["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"])}
       ${row(["a", "s", "d", "f", "g", "h", "j", "k", "l"])}
