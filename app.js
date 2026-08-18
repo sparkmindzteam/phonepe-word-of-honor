@@ -1166,13 +1166,12 @@ function timerColor(ms, totalMs) {
 }
 
 function renderHeader(_title, _subtitle, chips = "") {
-  const adminChip = isAdminLink() ? `<span class="chip">Admin</span>` : "";
   return `
     <header class="header" data-ui="header">
       <button type="button" class="brand" data-ui="logo-wrap" data-home aria-label="Home">
         <img class="logo-img" data-ui="logo" src="./assets/logo.png" alt="PhonePe" width="148" height="40" />
       </button>
-      <div class="header-meta" data-ui="header-meta">${adminChip}${chips}</div>
+      <div class="header-meta" data-ui="header-meta">${chips}</div>
     </header>
   `;
 }
@@ -1591,7 +1590,7 @@ async function openAdminPanel() {
           <div>
             <div class="panel-kicker">Admin</div>
             <h2 class="form-title">Kiosk controls</h2>
-            <p class="form-lead">Ctrl+L to close · USB keyboard required for this panel</p>
+            <p class="form-lead">Ctrl+Shift+L to close · USB keyboard required for this panel</p>
           </div>
           <button type="button" class="btn btn-primary" data-admin-close>Close</button>
         </div>
@@ -2147,13 +2146,15 @@ function updateGridSelectionUI() {
   });
   window.addEventListener("resize", syncWordfindLayout);
   window.addEventListener("orientationchange", () => setTimeout(syncWordfindLayout, 80));
-  window.addEventListener("keydown", (e) => {
+  window.addEventListener(
+    "keydown",
+    (e) => {
     if (e.key === "Escape" && adminOpen) {
       e.preventDefault();
       closeAdminPanel();
       return;
     }
-    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === "KeyL" || e.key === "l" || e.key === "L")) {
+    if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === "KeyL" || e.key === "l" || e.key === "L")) {
       if (!isAdminLink()) return;
       e.preventDefault();
       toggleAdminPanel();
@@ -2168,5 +2169,7 @@ function updateGridSelectionUI() {
       return;
     }
     handleUsbTyping(e);
-  });
+    },
+    true,
+  );
 })();

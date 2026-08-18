@@ -46,7 +46,7 @@ python -m http.server 5173
 
 Open http://localhost:5173 — add `?kiosk=1` for kiosk hardening.
 
-Admin kiosk (same game + Ctrl+L panel): http://localhost:5173/admin
+Admin kiosk (same game + Ctrl+Shift+L panel): http://localhost:5173/admin
 
 Or run `.\start-kiosk.ps1` to launch Edge in kiosk mode.
 
@@ -59,4 +59,4 @@ Pushes to `master`/`main` auto-deploy via GitHub Actions to the Spark Mindz Verc
 ```
 
 Live site: **https://phonepe-word-of-honor.vercel.app**
-Admin kiosk: **https://phonepe-word-of-honor.vercel.app/admin** (Ctrl+L)
+Admin kiosk: **https://phonepe-word-of-honor.vercel.app/admin** (Ctrl+Shift+L)
