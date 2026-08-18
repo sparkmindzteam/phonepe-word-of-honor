@@ -10,30 +10,12 @@ function shouldHardenKiosk() {
 function hardenKiosk() {
   if (!shouldHardenKiosk()) return;
 
-  try {
-    localStorage.setItem("phonepe_kiosk_mode", "1");
-  } catch {}
-
   window.addEventListener("contextmenu", (e) => e.preventDefault(), { passive: false });
   window.addEventListener("selectstart", (e) => {
-    if (e.target.closest("input, textarea, [data-admin-q], .admin-search")) return;
+    if (e.target.closest("input, textarea")) return;
     e.preventDefault();
   }, { passive: false });
   window.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
-  window.addEventListener(
-    "touchstart",
-    (e) => {
-      if (e.touches.length >= 3) e.preventDefault();
-    },
-    { passive: false },
-  );
-  window.addEventListener(
-    "touchmove",
-    (e) => {
-      if (e.touches.length >= 3) e.preventDefault();
-    },
-    { passive: false },
-  );
 
   try {
     history.pushState(null, "", location.href);
@@ -567,9 +549,6 @@ const TIMER_LIMITS = {
   idleResetSeconds: { min: 3, max: 60, step: 1, fallback: 7, presets: [5, 7, 10, 15, 20] },
 };
 
-let settingsCache = null;
-let lastSyncedSettingsKey = "";
-
 function clampTimer(key, value) {
   const lim = TIMER_LIMITS[key];
   const n = Math.round(Number(value));
@@ -577,8 +556,12 @@ function clampTimer(key, value) {
   return Math.max(lim.min, Math.min(lim.max, n));
 }
 
-function normalizeSettings(stored) {
-  let keyboardMode = stored?.keyboardMode;
+function loadSettings() {
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
+  } catch {}
+  let keyboardMode = stored.keyboardMode;
   if (!KEYBOARD_MODES.includes(keyboardMode)) {
     try {
       keyboardMode = localStorage.getItem(KEYBOARD_MODE_KEY);
@@ -587,60 +570,23 @@ function normalizeSettings(stored) {
   if (!KEYBOARD_MODES.includes(keyboardMode)) keyboardMode = "both";
   return {
     keyboardMode,
-    quizSeconds: clampTimer("quizSeconds", stored?.quizSeconds ?? cfg?.quizSeconds ?? 30),
-    wordFindSeconds: clampTimer("wordFindSeconds", stored?.wordFindSeconds ?? cfg?.wordFindSeconds ?? 20),
-    idleResetSeconds: clampTimer("idleResetSeconds", stored?.idleResetSeconds ?? cfg?.idleResetSeconds ?? 7),
+    quizSeconds: clampTimer("quizSeconds", stored.quizSeconds ?? cfg?.quizSeconds ?? 30),
+    wordFindSeconds: clampTimer("wordFindSeconds", stored.wordFindSeconds ?? cfg?.wordFindSeconds ?? 20),
+    idleResetSeconds: clampTimer("idleResetSeconds", stored.idleResetSeconds ?? cfg?.idleResetSeconds ?? 7),
   };
 }
 
-function persistSettingsLocal(next) {
-  settingsCache = next;
+function saveSettings(patch) {
+  const next = { ...loadSettings(), ...patch };
+  next.quizSeconds = clampTimer("quizSeconds", next.quizSeconds);
+  next.wordFindSeconds = clampTimer("wordFindSeconds", next.wordFindSeconds);
+  next.idleResetSeconds = clampTimer("idleResetSeconds", next.idleResetSeconds);
+  if (!KEYBOARD_MODES.includes(next.keyboardMode)) next.keyboardMode = "both";
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
     localStorage.setItem(KEYBOARD_MODE_KEY, next.keyboardMode);
   } catch {}
-}
-
-function loadSettings() {
-  if (settingsCache) return settingsCache;
-  let stored = {};
-  try {
-    stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
-  } catch {}
-  settingsCache = normalizeSettings(stored);
-  return settingsCache;
-}
-
-function saveSettings(patch) {
-  const next = normalizeSettings({ ...loadSettings(), ...patch });
-  persistSettingsLocal(next);
-  lastSyncedSettingsKey = JSON.stringify(next);
-  fetch("/api/settings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(next),
-  }).catch(() => {});
   return next;
-}
-
-async function syncSettingsFromServer() {
-  try {
-    const res = await fetch("/api/settings", { cache: "no-store" });
-    if (!res.ok) return loadSettings();
-    const data = await res.json();
-    if (!data?.settings || typeof data.settings !== "object") return loadSettings();
-    const next = normalizeSettings(data.settings);
-    const key = JSON.stringify(next);
-    const changed = key !== lastSyncedSettingsKey;
-    persistSettingsLocal(next);
-    lastSyncedSettingsKey = key;
-    if (changed && state.screen === Screen.ENTER_DETAILS && !adminOpen && !recordsOpen) {
-      render();
-    }
-    return next;
-  } catch {
-    return loadSettings();
-  }
 }
 
 function isAdminLink() {
@@ -660,13 +606,43 @@ function setKeyboardMode(mode) {
 }
 
 function virtualKeyboardEnabled() {
-  const mode = getKeyboardMode();
-  return mode === "virtual" || mode === "both";
+  return getKeyboardMode() === "virtual" || getKeyboardMode() === "both";
 }
 
 function usbKeyboardEnabled() {
-  const mode = getKeyboardMode();
-  return mode === "usb" || mode === "both";
+  return getKeyboardMode() === "usb" || getKeyboardMode() === "both";
+}
+
+function applyTimerSettingsToRunningGame() {
+  if (state.screen === Screen.QUIZ && !state.locked) {
+    state.wordFindStartedAt = nowMs();
+    state.remainingMs = quizSeconds() * 1000;
+    updateQuizTimerUI();
+  }
+  if (state.screen === Screen.WORDFIND && !state.locked) {
+    state.wordFindStartedAt = nowMs();
+    state.remainingMs = wordFindSeconds() * 1000;
+    updateWordFindTimerUI();
+  }
+  if (state.screen === Screen.END) scheduleIdleReset();
+}
+
+function applyKioskSettings() {
+  applyTimerSettingsToRunningGame();
+  if (state.screen === Screen.ENTER_DETAILS) attachPlayerKeyboard();
+  else hideVirtualKeyboard();
+}
+
+function isTypingKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  return (
+    e.key.length === 1 ||
+    e.key === "Backspace" ||
+    e.key === "Delete" ||
+    e.key === "Enter" ||
+    e.key === "Tab" ||
+    e.key === " "
+  );
 }
 
 function ensureHost(id, className) {
@@ -1545,23 +1521,27 @@ function showVirtualKeyboard() {
 
 function attachPlayerKeyboard() {
   const inputs = [document.getElementById("player-name"), document.getElementById("player-email")].filter(Boolean);
-  const useVk = virtualKeyboardEnabled();
+  const mode = getKeyboardMode();
+  const useVk = mode === "virtual" || mode === "both";
+  const useUsb = mode === "usb" || mode === "both";
   inputs.forEach((el) => {
     el.setAttribute("autocomplete", "off");
     el.setAttribute("autocapitalize", "off");
     el.setAttribute("spellcheck", "false");
-    el.setAttribute("inputmode", "none");
-    if (useVk) {
-      el.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        focusPlayerField(el);
-      });
-    } else {
+    if (useVk && !useUsb) {
+      el.setAttribute("inputmode", "none");
+    } else if (useUsb && !useVk) {
       el.removeAttribute("readonly");
       el.setAttribute("inputmode", el.id === "player-email" ? "email" : "text");
+    } else {
+      el.setAttribute("inputmode", "none");
     }
   });
-  if (useVk && !adminOpen) {
+  if (adminOpen) {
+    hideVirtualKeyboard();
+    return;
+  }
+  if (useVk) {
     const prefer = vkTarget() || document.getElementById("player-name");
     focusPlayerField(prefer);
   } else {
@@ -1573,19 +1553,24 @@ function attachPlayerKeyboard() {
 function handleUsbTyping(e) {
   if (adminOpen || recordsOpen) return false;
   if (state.screen !== Screen.ENTER_DETAILS) return false;
+  if (!isTypingKey(e)) return false;
+  const mode = getKeyboardMode();
   const el = document.activeElement?.classList?.contains("field-input")
     ? document.activeElement
     : vkTarget();
-  if (!el?.classList?.contains("field-input")) return false;
 
-  const mode = getKeyboardMode();
   if (mode === "virtual") {
-    e.preventDefault();
-    return true;
+    if (el?.classList?.contains("field-input") || e.target?.closest?.(".field-input, .vk-root")) {
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    }
+    return false;
   }
+
   if (mode === "usb") return false;
-  // both: inject so the OS keyboard stays closed on kiosk TVs
-  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+
+  if (!el?.classList?.contains("field-input")) return false;
   if (e.key === "Tab") {
     e.preventDefault();
     vkTargetId = el.id;
@@ -1598,7 +1583,7 @@ function handleUsbTyping(e) {
     vkGoNext();
     return true;
   }
-  if (e.key === "Backspace") {
+  if (e.key === "Backspace" || e.key === "Delete") {
     e.preventDefault();
     vkTargetId = el.id;
     vkBackspace();
@@ -1619,6 +1604,30 @@ function handleUsbTyping(e) {
   return false;
 }
 
+function bindKioskInputGuards() {
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const el = e.target?.closest?.(".field-input");
+      if (!el || adminOpen || state.screen !== Screen.ENTER_DETAILS) return;
+      if (!virtualKeyboardEnabled()) return;
+      e.preventDefault();
+      focusPlayerField(el);
+    },
+    true,
+  );
+  document.addEventListener(
+    "beforeinput",
+    (e) => {
+      if (adminOpen || recordsOpen) return;
+      if (state.screen !== Screen.ENTER_DETAILS) return;
+      if (!e.target?.classList?.contains("field-input")) return;
+      if (getKeyboardMode() === "virtual") e.preventDefault();
+    },
+    true,
+  );
+}
+
 function closeAdminPanel() {
   adminOpen = false;
   const root = document.getElementById("admin-root");
@@ -1627,13 +1636,11 @@ function closeAdminPanel() {
     root.innerHTML = "";
   }
   document.body.classList.remove("admin-open");
-  if (state.screen === Screen.ENTER_DETAILS && virtualKeyboardEnabled()) {
-    showVirtualKeyboard();
-    focusPlayerField(vkTarget() || document.getElementById("player-name"));
-  }
+  applyKioskSettings();
 }
 
 async function openAdminPanel() {
+  if (!isAdminLink()) return;
   adminOpen = true;
   hideVirtualKeyboard();
   snapshotDetailsForm();
@@ -1701,16 +1708,16 @@ async function openAdminPanel() {
           <div>
             <p class="admin-kicker">Admin</p>
             <h2 class="admin-title">Kiosk controls</h2>
-            <p class="admin-sub">Ctrl+Shift+L closes this panel. Esc closes it too. Esc again exits the kiosk.</p>
+            <p class="admin-sub">Press Ctrl+Shift+L to close. Use a USB keyboard in this panel.</p>
           </div>
           <button type="button" class="btn btn-primary" data-admin-close>Close</button>
         </div>
         <div class="admin-block">
           <h3 class="admin-h">Keyboard in use</h3>
           <div class="admin-modes">
-            ${modeBtn("both", "Both", "On-screen keyboard and USB keyboard")}
-            ${modeBtn("virtual", "Virtual only", "Touchscreen keyboard. USB typing is off for players.")}
-            ${modeBtn("usb", "USB only", "Physical keyboard. Hide the on-screen keyboard.")}
+            ${modeBtn("both", "Both", "On-screen keyboard and USB keyboard both work.")}
+            ${modeBtn("virtual", "Virtual only", "Show the on-screen keyboard. USB typing is blocked.")}
+            ${modeBtn("usb", "USB only", "Hide the on-screen keyboard. Type with the USB keyboard only.")}
           </div>
         </div>
         <div class="admin-block">
@@ -1748,12 +1755,14 @@ async function openAdminPanel() {
     btn.addEventListener("pointerdown", () => {
       snapshotDetailsForm();
       setKeyboardMode(btn.getAttribute("data-kb-mode"));
+      applyKioskSettings();
       render();
       void openAdminPanel();
     });
   });
   const applyTimer = (key, value) => {
     saveSettings({ [key]: clampTimer(key, value) });
+    applyKioskSettings();
     void openAdminPanel();
   };
   root.querySelectorAll("[data-timer-dir]").forEach((btn) => {
@@ -1784,6 +1793,7 @@ async function openAdminPanel() {
 }
 
 function toggleAdminPanel() {
+  if (!isAdminLink()) return;
   if (adminOpen) closeAdminPanel();
   else void openAdminPanel();
 }
@@ -1796,8 +1806,12 @@ function renderEnterDetails() {
         ${renderBrandBanner({ home: true })}
         <div class="panel form-card" data-ui="form-card">
           <h2 class="form-title">Enter your details</h2>
-          <p class="form-lead">Name and Email ID to begin.${
-            virtualKeyboardEnabled() ? " Use the on-screen keyboard or a USB keyboard." : ""
+          <p class="form-lead">${
+            getKeyboardMode() === "usb"
+              ? "Name and Email ID to begin. Type with the USB keyboard."
+              : getKeyboardMode() === "virtual"
+                ? "Name and Email ID to begin. Use the on-screen keyboard. USB typing is off."
+                : "Name and Email ID to begin. Use the on-screen keyboard or a USB keyboard."
           }</p>
           <form class="player-form" data-form="details">
             <div class="field-group">
@@ -2248,10 +2262,10 @@ function updateGridSelectionUI() {
 // ---- Boot ----
 (async function main() {
   hardenKiosk();
+  bindKioskInputGuards();
   hydrateScoreDb().catch(() => {});
   try {
     cfg = await loadConfig();
-    await syncSettingsFromServer();
     goStart();
   } catch (err) {
     $app.innerHTML = `<div class="screen"><div class="card card-sm" style="margin:40px auto;max-width:600px">
@@ -2267,21 +2281,19 @@ function updateGridSelectionUI() {
   window.addEventListener(
     "keydown",
     (e) => {
-    if (e.key === "Escape") {
+    if (e.key === "Escape" && adminOpen) {
       e.preventDefault();
-      if (adminOpen) {
-        closeAdminPanel();
-        return;
-      }
-      fetch("/api/kiosk/exit", { method: "POST" }).catch(() => {});
+      closeAdminPanel();
       return;
     }
     if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === "KeyL" || e.key === "l" || e.key === "L")) {
+      if (!isAdminLink()) return;
       e.preventDefault();
       toggleAdminPanel();
       return;
     }
     if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === "KeyD" || e.key === "d" || e.key === "D")) {
+      if (!isAdminLink()) return;
       e.preventDefault();
       recordsOpen = !recordsOpen;
       if (recordsOpen) closeAdminPanel();
@@ -2292,5 +2304,4 @@ function updateGridSelectionUI() {
     },
     true,
   );
-  setInterval(() => { syncSettingsFromServer().catch(() => {}); }, 2000);
 })();
