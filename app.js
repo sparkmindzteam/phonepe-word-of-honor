@@ -4,7 +4,6 @@ const $app = document.getElementById("app");
 function shouldHardenKiosk() {
   const params = new URLSearchParams(location.search);
   if (params.get("kiosk") === "1") return true;
-  if (params.get("debug") === "1" || params.get("design") === "1") return false;
   return localStorage.getItem("phonepe_kiosk_mode") === "1";
 }
 
@@ -529,7 +528,6 @@ function generateWordSearch(words, cfgGrid, seed, forbiddenPlacements = new Set(
 const Screen = {
   ENTER_DETAILS: "enter_details",
   RULES: "rules",
-  START: "start",
   QUIZ: "quiz",
   WORDFIND: "wordfind",
   END: "end",
@@ -707,12 +705,6 @@ function wordFindLabel(index) {
 
 function activeQuestion() {
   return state.roundQuestions[state.questionIndex];
-}
-
-function goEnterDetails() {
-  state.screen = Screen.ENTER_DETAILS;
-  state.formError = null;
-  render();
 }
 
 function goRules() {
@@ -1330,10 +1322,6 @@ function buildGridHtml(gridData, interactive = true) {
   }
   html += `</div></div>`;
   return html;
-}
-
-function renderFlowStep(_step, _total, _label) {
-  return "";
 }
 
 function renderFormError() {

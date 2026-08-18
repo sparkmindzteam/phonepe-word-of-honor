@@ -1,7 +1,8 @@
-PhonePe integrity/**
-*.ai
-*.pdf
-*.docx
-*.xlsx
-.github/**
 .git/**
+.github/**
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+.vercel
