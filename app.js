@@ -1341,27 +1341,6 @@ function renderRules() {
               </ul>
             </div>
           </div>
-          <div class="rules-grid">
-            <div class="rules-box">
-              <div class="rules-box-title">Score messages</div>
-              <ul class="rules-mini">
-                <li>0 — Oops!</li>
-                <li>25 — Not bad!</li>
-                <li>50 — Good Job!</li>
-                <li>75 — Great job!</li>
-                <li>100 — Flawless!</li>
-              </ul>
-            </div>
-            <div class="rules-box">
-              <div class="rules-box-title">Progression</div>
-              <ul class="rules-mini">
-                <li>Wrong Q1 → skip word search</li>
-                <li>Wrong final Q → game over</li>
-                <li>Wrong keyword / timeout → 0 pts</li>
-                <li>Words read L→R and top→bottom</li>
-              </ul>
-            </div>
-          </div>
           <button class="btn btn-primary" data-start-game>Start the game</button>
         </div>
       </div>
