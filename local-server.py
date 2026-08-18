@@ -2,6 +2,8 @@
 """Local kiosk server: static files + score backup (disk + online, once each)."""
 from __future__ import annotations
 
+import socket
+import sys
 import csv
 import json
 import mimetypes
@@ -209,21 +211,49 @@ class Handler(SimpleHTTPRequestHandler):
         )
 
 
+class ReuseServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
+def port_is_open(port: int) -> bool:
+    sock = socket.socket()
+    sock.settimeout(0.4)
+    try:
+        sock.connect(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def start_server(port: int) -> ReuseServer:
+    return ReuseServer(("127.0.0.1", port), Handler)
+
+
 def main() -> None:
     ensure_data_dir()
     os.chdir(ROOT)
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print("Word of Honor — local kiosk")
-    print(f"  Player:  http://127.0.0.1:{PORT}")
-    print(f"  Admin:   http://127.0.0.1:{PORT}/admin")
-    print(f"  Local:   {SCORES_JSON}")
-    print(f"  CSV:     {SCORES_CSV}")
-    print(f"  Online:  {ONLINE_URL}")
-    print("Press Ctrl+C to stop.")
+    if port_is_open(PORT):
+        print(f"Already running at http://127.0.0.1:{PORT}")
+        print(f"  Admin: http://127.0.0.1:{PORT}/admin")
+        return
+    try:
+        server = start_server(PORT)
+    except OSError as err:
+        print(f"Could not start on port {PORT}: {err}")
+        print("Close any other Word of Honor window, then try again.")
+        sys.exit(1)
+    print("Word of Honor — local kiosk", flush=True)
+    print(f"  Player:  http://127.0.0.1:{PORT}", flush=True)
+    print(f"  Admin:   http://127.0.0.1:{PORT}/admin", flush=True)
+    print(f"  Local:   {SCORES_JSON}", flush=True)
+    print(f"  CSV:     {SCORES_CSV}", flush=True)
+    print("Press Ctrl+C to stop.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopped.")
+        print("\nStopped.", flush=True)
         server.server_close()
 
 
