@@ -2000,7 +2000,7 @@ function renderEnd() {
         <div class="score-row">
           <div class="score-q">${qName}: ${escapeHtml(q.allegation || q.clue)}</div>
           <div class="score-detail">
-            ${qName}: ${r.quizCorrect ? `+${r.quiz}` : "0"}
+            ${r.quizCorrect ? `+${r.quiz}` : "0"}
             · ${kwName}: ${r.keywordSkipped ? "NA" : r.quizCorrect ? (r.word > 0 ? `+${r.word}` : "0") : "NA"}
             · <strong>${r.total} pts</strong>
           </div>
