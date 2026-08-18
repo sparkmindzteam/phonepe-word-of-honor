@@ -32,7 +32,7 @@ Each finished game is saved **once locally** and **once online**:
 - Local: `data\scores.json` and `data\scores.csv`
 - Online: https://phonepe-word-of-honor.vercel.app
 
-Python 3 must be installed and on PATH.
+Python is not required. Windows PowerShell and Microsoft Edge are enough.
 
 Or `.\start-kiosk.ps1` for Edge kiosk mode.
 

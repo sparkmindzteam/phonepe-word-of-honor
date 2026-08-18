@@ -1,20 +1,19 @@
-# Locked kiosk: fullscreen Edge, block back/home/gestures until Escape.
+# Locked kiosk: PowerShell file server + fullscreen Edge. Press Escape to exit.
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $port = 5173
+$root = $PSScriptRoot
 $url = "http://127.0.0.1:$port/?kiosk=1"
 $profileDir = Join-Path $env:TEMP "phonepe-kiosk-profile"
-$pythonProc = $null
+$dataDir = Join-Path $root "data"
+$scoresJson = Join-Path $dataDir "scores.json"
+$scoresCsv = Join-Path $dataDir "scores.csv"
+$onlineUrl = "https://phonepe-word-of-honor.vercel.app/api/scores"
 $edgeProc = $null
-$hook = $null
 $script:regBackup = @()
-
-function Get-Python {
-  if (Get-Command py -ErrorAction SilentlyContinue) { return @("py", "-3") }
-  if (Get-Command python -ErrorAction SilentlyContinue) { return @("python") }
-  throw "Python 3 is required. Install it and tick 'Add Python to PATH'."
-}
+$script:listener = $null
+$script:serverRunspace = $null
 
 function Get-Browser {
   $paths = @(
@@ -28,47 +27,44 @@ function Get-Browser {
 }
 
 function Set-RegDword([string]$path, [string]$name, [int]$value) {
-  if (-not (Test-Path $path)) {
-    New-Item -Path $path -Force | Out-Null
-    $script:regBackup += [pscustomobject]@{ Path = $path; Name = $name; HadValue = $false; Value = $null; CreatedKey = $true }
-  } else {
-    $item = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
-    if ($null -eq $item) {
-      $script:regBackup += [pscustomobject]@{ Path = $path; Name = $name; HadValue = $false; Value = $null; CreatedKey = $false }
+  try {
+    if (-not (Test-Path $path)) {
+      New-Item -Path $path -Force | Out-Null
+      $script:regBackup += [pscustomobject]@{ Path = $path; Name = $name; HadValue = $false; Value = $null }
     } else {
-      $script:regBackup += [pscustomobject]@{ Path = $path; Name = $name; HadValue = $true; Value = $item.$name; CreatedKey = $false }
+      $item = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
+      if ($null -eq $item) {
+        $script:regBackup += [pscustomobject]@{ Path = $path; Name = $name; HadValue = $false; Value = $null }
+      } else {
+        $script:regBackup += [pscustomobject]@{ Path = $path; Name = $name; HadValue = $true; Value = $item.$name }
+      }
     }
-  }
-  Set-ItemProperty -Path $path -Name $name -Value $value -Type DWord -Force
+    Set-ItemProperty -Path $path -Name $name -Value $value -Type DWord -Force
+  } catch {}
 }
 
 function Enable-GestureLock {
-  try { Set-RegDword "HKCU:\Software\Policies\Microsoft\Windows\EdgeUI" "AllowEdgeSwipe" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUI" "AllowEdgeSwipe" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUI" "DisableTLcorner" 1 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUI" "DisableTRcorner" 1 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "ThreeFingerSlideEnabled" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "FourFingerSlideEnabled" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "ThreeFingerTapEnabled" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "FourFingerTapEnabled" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "MultiFingerGestures" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "EnableBalloonTips" 0 } catch {}
-  try { Set-RegDword "HKCU:\Software\Policies\Microsoft\Windows\Explorer" "DisableBacktracking" 1 } catch {}
+  Set-RegDword "HKCU:\Software\Policies\Microsoft\Windows\EdgeUI" "AllowEdgeSwipe" 0
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUI" "AllowEdgeSwipe" 0
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUI" "DisableTLcorner" 1
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\ImmersiveShell\EdgeUI" "DisableTRcorner" 1
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "ThreeFingerSlideEnabled" 0
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "FourFingerSlideEnabled" 0
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "ThreeFingerTapEnabled" 0
+  Set-RegDword "HKCU:\Software\Microsoft\Windows\CurrentVersion\PrecisionTouchPad" "FourFingerTapEnabled" 0
 }
 
 function Restore-GestureLock {
   foreach ($item in $script:regBackup) {
     try {
-      if ($item.HadValue) {
-        Set-ItemProperty -Path $item.Path -Name $item.Name -Value $item.Value -Force
-      } else {
-        Remove-ItemProperty -Path $item.Path -Name $item.Name -ErrorAction SilentlyContinue
-      }
+      if ($item.HadValue) { Set-ItemProperty -Path $item.Path -Name $item.Name -Value $item.Value -Force }
+      else { Remove-ItemProperty -Path $item.Path -Name $item.Name -ErrorAction SilentlyContinue }
     } catch {}
   }
 }
 
-$code = @"
+if (-not ("PhonePeKioskLock" -as [type])) {
+Add-Type -TypeDefinition @"
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -77,21 +73,10 @@ public static class PhonePeKioskLock {
   public static volatile bool ExitRequested = false;
   private static IntPtr _hook = IntPtr.Zero;
   private static LowLevelKeyboardProc _proc = HookProc;
-
   private const int WH_KEYBOARD_LL = 13;
   private const int WM_KEYDOWN = 0x0100;
   private const int WM_SYSKEYDOWN = 0x0104;
-  private const int VK_TAB = 0x09;
-  private const int VK_ESCAPE = 0x1B;
-  private const int VK_F4 = 0x73;
-  private const int VK_F11 = 0x7A;
-  private const int VK_LWIN = 0x5B;
-  private const int VK_RWIN = 0x5C;
-  private const int VK_LEFT = 0x25;
-  private const int LLKHF_ALTDOWN = 0x20;
-
   private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-
   [DllImport("user32.dll", SetLastError = true)]
   private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
   [DllImport("user32.dll")]
@@ -102,121 +87,255 @@ public static class PhonePeKioskLock {
   private static extern IntPtr GetModuleHandle(string lpModuleName);
   [DllImport("user32.dll")]
   private static extern short GetAsyncKeyState(int vKey);
-
   [StructLayout(LayoutKind.Sequential)]
   private struct KBDLLHOOKSTRUCT {
-    public int vkCode;
-    public int scanCode;
-    public int flags;
-    public int time;
-    public IntPtr dwExtraInfo;
+    public int vkCode; public int scanCode; public int flags; public int time; public IntPtr dwExtraInfo;
   }
-
   public static void Install() {
     using (Process cur = Process.GetCurrentProcess())
     using (ProcessModule mod = cur.MainModule) {
       _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(mod.ModuleName), 0);
     }
   }
-
   public static void Uninstall() {
-    if (_hook != IntPtr.Zero) {
-      UnhookWindowsHookEx(_hook);
-      _hook = IntPtr.Zero;
-    }
+    if (_hook != IntPtr.Zero) { UnhookWindowsHookEx(_hook); _hook = IntPtr.Zero; }
   }
-
   private static bool Ctrl() { return (GetAsyncKeyState(0x11) & 0x8000) != 0; }
   private static bool Shift() { return (GetAsyncKeyState(0x10) & 0x8000) != 0; }
-
   private static IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam) {
     if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)) {
       KBDLLHOOKSTRUCT info = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-      bool alt = (info.flags & LLKHF_ALTDOWN) != 0;
+      bool alt = (info.flags & 0x20) != 0;
       int vk = info.vkCode;
-
-      if (vk == VK_ESCAPE && !Ctrl() && !alt) {
-        ExitRequested = true;
-        return (IntPtr)1;
-      }
-      if (vk == VK_LWIN || vk == VK_RWIN) return (IntPtr)1;
-      if (vk == VK_F11) return (IntPtr)1;
-      if (alt && vk == VK_TAB) return (IntPtr)1;
-      if (alt && vk == VK_F4) return (IntPtr)1;
-      if (alt && vk == VK_ESCAPE) return (IntPtr)1;
-      if (alt && vk == VK_LEFT) return (IntPtr)1;
-      if (Ctrl() && vk == VK_ESCAPE) return (IntPtr)1;
-      if (Ctrl() && Shift() && vk == VK_ESCAPE) return (IntPtr)1;
-      if (Ctrl() && (vk == 0x57 || vk == 0x54 || vk == 0x4E || vk == 0x52)) return (IntPtr)1; // W T N R
+      if (vk == 0x1B && !Ctrl() && !alt) { ExitRequested = true; return (IntPtr)1; }
+      if (vk == 0x5B || vk == 0x5C || vk == 0x7A) return (IntPtr)1;
+      if (alt && (vk == 0x09 || vk == 0x73 || vk == 0x1B || vk == 0x25)) return (IntPtr)1;
+      if (Ctrl() && vk == 0x1B) return (IntPtr)1;
+      if (Ctrl() && Shift() && vk == 0x1B) return (IntPtr)1;
+      if (Ctrl() && (vk == 0x57 || vk == 0x54 || vk == 0x4E || vk == 0x52)) return (IntPtr)1;
     }
     return CallNextHookEx(_hook, nCode, wParam, lParam);
   }
 }
 "@
-
-Add-Type -TypeDefinition $code -ErrorAction Stop
-
-function Wait-Server {
-  for ($i = 0; $i -lt 40; $i++) {
-    try {
-      $ok = Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 "http://127.0.0.1:$port/" 
-      if ($ok.StatusCode -ge 200) { return }
-    } catch {}
-    Start-Sleep -Milliseconds 250
-  }
-  throw "Local server did not start on port $port."
 }
 
-function Stop-KioskProcesses {
+function Ensure-Data {
+  if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
+  if (-not (Test-Path $scoresJson)) { Set-Content -Path $scoresJson -Value "[]" -Encoding UTF8 }
+}
+
+function Read-Scores {
+  Ensure-Data
+  try {
+    $raw = Get-Content -Raw -Path $scoresJson -ErrorAction Stop
+    $list = $raw | ConvertFrom-Json
+    if ($list -is [System.Array]) { return @($list) }
+    if ($null -eq $list) { return @() }
+    return @($list)
+  } catch { return @() }
+}
+
+function Write-Scores($list) {
+  Ensure-Data
+  $arr = @($list)
+  $json = $arr | ConvertTo-Json -Depth 8 -Compress
+  if ($null -eq $json) { $json = "[]" }
+  if ($json[0] -ne "[") { $json = "[$json]" }
+  Set-Content -Path $scoresJson -Value $json -Encoding UTF8
+  $lines = @("at,name,email,employeeId,score,maxScore,feedback,id")
+  foreach ($r in $arr) {
+    $esc = {
+      param($v)
+      $s = [string]$v
+      if ($s -match '[",\r\n]') { '"' + ($s.Replace('"','""')) + '"' } else { $s }
+    }
+    $lines += "$( & $esc $r.at),$( & $esc $r.name),$( & $esc $r.email),$( & $esc $r.employeeId),$($r.score),$($r.maxScore),$( & $esc $r.feedback),$( & $esc $r.id)"
+  }
+  Set-Content -Path $scoresCsv -Value $lines -Encoding UTF8
+}
+
+function Start-LocalServer {
+  $listener = [System.Net.HttpListener]::new()
+  $listener.Prefixes.Add("http://127.0.0.1:$port/")
+  $listener.Start()
+  $script:listener = $listener
+
+  $rs = [runspacefactory]::CreateRunspace()
+  $rs.Open()
+  $rs.SessionStateProxy.SetVariable("listener", $listener)
+  $rs.SessionStateProxy.SetVariable("root", $root)
+  $rs.SessionStateProxy.SetVariable("scoresJson", $scoresJson)
+  $rs.SessionStateProxy.SetVariable("scoresCsv", $scoresCsv)
+  $rs.SessionStateProxy.SetVariable("dataDir", $dataDir)
+  $rs.SessionStateProxy.SetVariable("onlineUrl", $onlineUrl)
+  $ps = [powershell]::Create()
+  $ps.Runspace = $rs
+  [void]$ps.AddScript({
+    $mime = @{
+      ".html"="text/html; charset=utf-8"; ".js"="text/javascript; charset=utf-8"
+      ".css"="text/css; charset=utf-8"; ".json"="application/json; charset=utf-8"
+      ".png"="image/png"; ".otf"="font/otf"; ".woff2"="font/woff2"; ".svg"="image/svg+xml"
+    }
+    $lock = New-Object object
+    function LoadScores {
+      try {
+        if (-not (Test-Path $scoresJson)) { return @() }
+        $x = (Get-Content -Raw $scoresJson) | ConvertFrom-Json
+        if ($null -eq $x) { return @() }
+        return @($x)
+      } catch { return @() }
+    }
+    function SaveScores($list) {
+      if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
+      $arr = @($list)
+      $json = $arr | ConvertTo-Json -Depth 8
+      if ($null -eq $json) { $json = "[]" }
+      Set-Content -Path $scoresJson -Value $json -Encoding UTF8
+      $csv = @("at,name,email,score,maxScore,feedback,id")
+      foreach ($r in $arr) {
+        $csv += "$($r.at),$($r.name),$($r.email),$($r.score),$($r.maxScore),$($r.feedback),$($r.id)"
+      }
+      Set-Content -Path $scoresCsv -Value $csv -Encoding UTF8
+    }
+    function WriteResponse($ctx, $code, $ctype, $bytes) {
+      $ctx.Response.StatusCode = $code
+      $ctx.Response.ContentType = $ctype
+      $ctx.Response.Headers["Cache-Control"] = "no-store"
+      $ctx.Response.ContentLength64 = $bytes.Length
+      $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+      $ctx.Response.OutputStream.Close()
+    }
+    function WriteJson($ctx, $code, $obj) {
+      $bytes = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 8 -Compress))
+      WriteResponse $ctx $code "application/json; charset=utf-8" $bytes
+    }
+    while ($listener.IsListening) {
+      try { $ctx = $listener.GetContext() } catch { break }
+      try {
+        $path = [Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath)
+        if ($path -eq "/") { $path = "/index.html" }
+        if ($path -eq "/admin" -or $path -eq "/admin/") { $path = "/admin.html" }
+        if ($ctx.Request.HttpMethod -eq "OPTIONS") {
+          $ctx.Response.StatusCode = 204
+          $ctx.Response.Headers["Access-Control-Allow-Origin"] = "*"
+          $ctx.Response.Close(); continue
+        }
+        if ($path -eq "/api/scores" -or $path -eq "/api/scores/") {
+          if ($ctx.Request.HttpMethod -eq "GET") {
+            [void][System.Threading.Monitor]::Enter($lock)
+            try { $scores = LoadScores } finally { [System.Threading.Monitor]::Exit($lock) }
+            WriteJson $ctx 200 @{ ok = $true; scores = @($scores); source = "local-file" }
+            continue
+          }
+          if ($ctx.Request.HttpMethod -eq "POST") {
+            $reader = New-Object IO.StreamReader($ctx.Request.InputStream, $ctx.Request.ContentEncoding)
+            $raw = $reader.ReadToEnd(); $reader.Close()
+            $body = $raw | ConvertFrom-Json
+            if (-not $body.name -and -not $body.email) {
+              WriteJson $ctx 400 @{ ok = $false; error = "name or email required" }
+              continue
+            }
+            $rec = [ordered]@{
+              id = [string]$body.id
+              name = [string]$body.name
+              employeeId = [string]$body.employeeId
+              email = [string]$body.email
+              score = [int]$body.score
+              maxScore = [int]$body.maxScore
+              feedback = [string]$body.feedback
+              at = [string]$body.at
+              savedLocal = $true
+              savedOnline = $false
+            }
+            [void][System.Threading.Monitor]::Enter($lock)
+            try {
+              $scores = @(LoadScores)
+              if ($rec.id -and ($scores | Where-Object { $_.id -eq $rec.id })) { }
+              else { $scores += (New-Object psobject -Property $rec); SaveScores $scores }
+            } finally { [System.Threading.Monitor]::Exit($lock) }
+            $onlineOk = $false
+            try {
+              $payload = @{
+                id=$rec.id; name=$rec.name; employeeId=$rec.employeeId; email=$rec.email
+                score=$rec.score; maxScore=$rec.maxScore; feedback=$rec.feedback; at=$rec.at; rounds=@()
+              } | ConvertTo-Json -Compress
+              Invoke-RestMethod -Method Post -Uri $onlineUrl -ContentType "application/json" -Body $payload -TimeoutSec 12 | Out-Null
+              $onlineOk = $true
+            } catch {}
+            WriteJson $ctx 201 @{ ok = $true; savedLocal = $true; savedOnline = $onlineOk }
+            continue
+          }
+        }
+        $rel = $path.TrimStart("/").Replace("/", [IO.Path]::DirectorySeparatorChar)
+        $full = [IO.Path]::GetFullPath((Join-Path $root $rel))
+        if (-not $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path $full -PathType Leaf)) {
+          WriteJson $ctx 404 @{ ok = $false }
+          continue
+        }
+        $ext = [IO.Path]::GetExtension($full).ToLowerInvariant()
+        $ctype = $mime[$ext]; if (-not $ctype) { $ctype = "application/octet-stream" }
+        $bytes = [IO.File]::ReadAllBytes($full)
+        WriteResponse $ctx 200 $ctype $bytes
+      } catch {
+        try { $ctx.Response.StatusCode = 500; $ctx.Response.Close() } catch {}
+      }
+    }
+  })
+  $script:serverRunspace = $rs
+  [void]$ps.BeginInvoke()
+}
+
+function Stop-LocalServer {
+  try { if ($script:listener -and $script:listener.IsListening) { $script:listener.Stop(); $script:listener.Close() } } catch {}
+  try { if ($script:serverRunspace) { $script:serverRunspace.Close(); $script:serverRunspace.Dispose() } } catch {}
+}
+
+function Stop-KioskBrowser {
   if ($edgeProc -and -not $edgeProc.HasExited) {
     try { Stop-Process -Id $edgeProc.Id -Force -ErrorAction SilentlyContinue } catch {}
   }
   Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -and $_.CommandLine -like "*phonepe-kiosk-profile*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  if ($pythonProc -and -not $pythonProc.HasExited) {
-    try { Stop-Process -Id $pythonProc.Id -Force -ErrorAction SilentlyContinue } catch {}
-  }
-  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine -like "*local-server.py*" } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 try {
-  Write-Host "Locking Word of Honor in kiosk mode..."
+  Write-Host "Starting locked kiosk..."
   Write-Host "Press ESC to unlock and exit."
+  Ensure-Data
   Enable-GestureLock
-
-  $py = Get-Python
-  if ($py.Count -gt 1) {
-    $pythonProc = Start-Process -FilePath $py[0] -ArgumentList @($py[1], "local-server.py") -PassThru -WindowStyle Hidden
-  } else {
-    $pythonProc = Start-Process -FilePath $py[0] -ArgumentList @("local-server.py") -PassThru -WindowStyle Hidden
-  }
-  Wait-Server
+  Start-LocalServer
+  Start-Sleep -Milliseconds 400
 
   $browser = Get-Browser
-  $args = @(
+  $browserArgs = @(
     "--kiosk", $url,
     "--edge-kiosk-type=fullscreen",
-    "--kiosk-type=fullscreen",
     "--no-first-run",
     "--disable-pinch",
     "--overscroll-history-navigation=0",
     "--disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI",
     "--user-data-dir=$profileDir"
   )
-  $edgeProc = Start-Process -FilePath $browser -ArgumentList $args -PassThru
-
+  $edgeProc = Start-Process -FilePath $browser -ArgumentList $browserArgs -PassThru
   [PhonePeKioskLock]::Install()
   while (-not [PhonePeKioskLock]::ExitRequested) {
     if ($edgeProc -and $edgeProc.HasExited) { break }
     Start-Sleep -Milliseconds 150
   }
 }
+catch {
+  Write-Host ""
+  Write-Host "ERROR: $($_.Exception.Message)"
+  Write-Host $_.ScriptStackTrace
+  Write-Host ""
+  pause
+}
 finally {
   try { [PhonePeKioskLock]::Uninstall() } catch {}
-  Stop-KioskProcesses
+  Stop-KioskBrowser
+  Stop-LocalServer
   Restore-GestureLock
   Write-Host "Kiosk unlocked."
 }
