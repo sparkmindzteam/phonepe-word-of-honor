@@ -10,12 +10,30 @@ function shouldHardenKiosk() {
 function hardenKiosk() {
   if (!shouldHardenKiosk()) return;
 
+  try {
+    localStorage.setItem("phonepe_kiosk_mode", "1");
+  } catch {}
+
   window.addEventListener("contextmenu", (e) => e.preventDefault(), { passive: false });
   window.addEventListener("selectstart", (e) => {
-    if (e.target.closest("input, textarea")) return;
+    if (e.target.closest("input, textarea, [data-admin-q], .admin-search")) return;
     e.preventDefault();
   }, { passive: false });
   window.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+  window.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length >= 3) e.preventDefault();
+    },
+    { passive: false },
+  );
+  window.addEventListener(
+    "touchmove",
+    (e) => {
+      if (e.touches.length >= 3) e.preventDefault();
+    },
+    { passive: false },
+  );
 
   try {
     history.pushState(null, "", location.href);

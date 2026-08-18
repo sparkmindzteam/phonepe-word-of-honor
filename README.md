@@ -22,7 +22,7 @@ Wrong Q1 skips that word search. Wrong Q2 ends the game.
 
 ## Run locally (no Vercel)
 
-Double-click **`start-local.bat`**.
+Double-click **`start-local.bat`**. The game opens in locked kiosk mode (fullscreen, no back, no Windows home swipe). **Press ESC to unlock and exit.**
 
 - Player: http://127.0.0.1:5173
 - Admin: http://127.0.0.1:5173/admin (Ctrl+Shift+L)
