@@ -6,4 +6,5 @@ Thumbs.db
 .vercel
 data/*.json
 data/*.csv
+__pycache__/
 .env*
