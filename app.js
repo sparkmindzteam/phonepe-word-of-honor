@@ -1372,6 +1372,8 @@ function focusPlayerField(el) {
   document.querySelectorAll(".field-input").forEach((n) => n.classList.toggle("vk-focus", n === el));
   try {
     el.focus({ preventScroll: true });
+    // Ensure caret shows on kiosk browsers when using on-screen keyboard.
+    el.style.caretColor = "var(--pp-purple)";
     const len = el.value.length;
     el.setSelectionRange(len, len);
   } catch {}
@@ -1500,7 +1502,6 @@ function attachPlayerKeyboard() {
     el.setAttribute("spellcheck", "false");
     el.setAttribute("inputmode", "none");
     if (useVk) {
-      el.setAttribute("readonly", "readonly");
       el.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         focusPlayerField(el);

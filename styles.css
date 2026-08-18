@@ -636,6 +636,7 @@ button {
   outline: none;
   border-color: var(--pp-purple);
   box-shadow: 0 0 0 4px rgba(95, 37, 159, 0.14);
+  caret-color: var(--pp-purple);
 }
 
 .field-email {
