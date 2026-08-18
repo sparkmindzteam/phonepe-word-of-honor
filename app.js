@@ -125,11 +125,15 @@ function sectionPoints() {
 }
 
 function quizSeconds() {
-  return cfg.quizSeconds ?? 30;
+  return loadSettings().quizSeconds;
 }
 
 function wordFindSeconds() {
-  return cfg.wordFindSeconds ?? 20;
+  return loadSettings().wordFindSeconds;
+}
+
+function idleResetSeconds() {
+  return loadSettings().idleResetSeconds;
 }
 
 function isFinalMcqRound() {
@@ -539,7 +543,53 @@ let vkTargetId = null;
 let vkShift = false;
 
 const KEYBOARD_MODE_KEY = "phonepe_keyboard_mode";
+const SETTINGS_KEY = "phonepe_kiosk_settings";
 const KEYBOARD_MODES = ["both", "virtual", "usb"];
+const TIMER_LIMITS = {
+  quizSeconds: { min: 5, max: 120, step: 5, fallback: 30, presets: [15, 20, 30, 45, 60] },
+  wordFindSeconds: { min: 5, max: 90, step: 5, fallback: 20, presets: [10, 15, 20, 30, 45] },
+  idleResetSeconds: { min: 3, max: 60, step: 1, fallback: 7, presets: [5, 7, 10, 15, 20] },
+};
+
+function clampTimer(key, value) {
+  const lim = TIMER_LIMITS[key];
+  const n = Math.round(Number(value));
+  if (!lim || !Number.isFinite(n)) return lim?.fallback ?? 30;
+  return Math.max(lim.min, Math.min(lim.max, n));
+}
+
+function loadSettings() {
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
+  } catch {}
+  let keyboardMode = stored.keyboardMode;
+  if (!KEYBOARD_MODES.includes(keyboardMode)) {
+    try {
+      keyboardMode = localStorage.getItem(KEYBOARD_MODE_KEY);
+    } catch {}
+  }
+  if (!KEYBOARD_MODES.includes(keyboardMode)) keyboardMode = "both";
+  return {
+    keyboardMode,
+    quizSeconds: clampTimer("quizSeconds", stored.quizSeconds ?? cfg?.quizSeconds ?? 30),
+    wordFindSeconds: clampTimer("wordFindSeconds", stored.wordFindSeconds ?? cfg?.wordFindSeconds ?? 20),
+    idleResetSeconds: clampTimer("idleResetSeconds", stored.idleResetSeconds ?? cfg?.idleResetSeconds ?? 7),
+  };
+}
+
+function saveSettings(patch) {
+  const next = { ...loadSettings(), ...patch };
+  next.quizSeconds = clampTimer("quizSeconds", next.quizSeconds);
+  next.wordFindSeconds = clampTimer("wordFindSeconds", next.wordFindSeconds);
+  next.idleResetSeconds = clampTimer("idleResetSeconds", next.idleResetSeconds);
+  if (!KEYBOARD_MODES.includes(next.keyboardMode)) next.keyboardMode = "both";
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    localStorage.setItem(KEYBOARD_MODE_KEY, next.keyboardMode);
+  } catch {}
+  return next;
+}
 
 function isAdminLink() {
   const params = new URLSearchParams(location.search);
@@ -549,18 +599,12 @@ function isAdminLink() {
 }
 
 function getKeyboardMode() {
-  try {
-    const v = localStorage.getItem(KEYBOARD_MODE_KEY);
-    if (KEYBOARD_MODES.includes(v)) return v;
-  } catch {}
-  return "both";
+  return loadSettings().keyboardMode;
 }
 
 function setKeyboardMode(mode) {
   if (!KEYBOARD_MODES.includes(mode)) return;
-  try {
-    localStorage.setItem(KEYBOARD_MODE_KEY, mode);
-  } catch {}
+  saveSettings({ keyboardMode: mode });
 }
 
 function virtualKeyboardEnabled() {
@@ -697,7 +741,7 @@ function clearTimers() {
 
 function scheduleIdleReset() {
   if (state.idleResetTimer) clearTimeout(state.idleResetTimer);
-  const sec = cfg?.idleResetSeconds ?? 7;
+  const sec = idleResetSeconds();
   state.idleResetTimer = setTimeout(() => goStart(), sec * 1000);
 }
 
@@ -1577,39 +1621,73 @@ async function openAdminPanel() {
       </tr>`,
     )
     .join("");
-  const mode = getKeyboardMode();
+  const settings = loadSettings();
+  const mode = settings.keyboardMode;
   const modeBtn = (id, title, desc) => `
     <button type="button" class="admin-mode ${mode === id ? "is-on" : ""}" data-kb-mode="${id}">
       <strong>${title}</strong>
       <span>${desc}</span>
     </button>`;
+  const timerCard = (key, title, hint) => {
+    const lim = TIMER_LIMITS[key];
+    const value = settings[key];
+    const pills = lim.presets
+      .map(
+        (n) =>
+          `<button type="button" class="admin-pill ${value === n ? "is-on" : ""}" data-timer-key="${key}" data-timer-set="${n}">${n}s</button>`,
+      )
+      .join("");
+    return `
+      <div class="admin-timer">
+        <div class="admin-timer-top">
+          <div>
+            <strong>${title}</strong>
+            <span>${hint}</span>
+          </div>
+          <div class="admin-step">
+            <button type="button" data-timer-key="${key}" data-timer-dir="-">−</button>
+            <b>${value}s</b>
+            <button type="button" data-timer-key="${key}" data-timer-dir="+">+</button>
+          </div>
+        </div>
+        <div class="admin-pills">${pills}</div>
+      </div>`;
+  };
   root.innerHTML = `
     <div class="admin-overlay" data-admin>
       <div class="admin-panel">
         <div class="admin-head">
           <div>
-            <div class="panel-kicker">Admin</div>
-            <h2 class="form-title">Kiosk controls</h2>
-            <p class="form-lead">Ctrl+Shift+L to close · USB keyboard required for this panel</p>
+            <p class="admin-kicker">Admin</p>
+            <h2 class="admin-title">Kiosk controls</h2>
+            <p class="admin-sub">Press Ctrl+Shift+L to close. Use a USB keyboard in this panel.</p>
           </div>
           <button type="button" class="btn btn-primary" data-admin-close>Close</button>
         </div>
         <div class="admin-block">
-          <div class="section-label">Keyboard in use</div>
+          <h3 class="admin-h">Keyboard in use</h3>
           <div class="admin-modes">
             ${modeBtn("both", "Both", "On-screen keyboard and USB keyboard")}
             ${modeBtn("virtual", "Virtual only", "Touchscreen keyboard. USB typing is off for players.")}
             ${modeBtn("usb", "USB only", "Physical keyboard. Hide the on-screen keyboard.")}
           </div>
         </div>
+        <div class="admin-block">
+          <h3 class="admin-h">Game timers</h3>
+          <div class="admin-timers">
+            ${timerCard("quizSeconds", "Question timer", "Time to answer each quiz question")}
+            ${timerCard("wordFindSeconds", "Word search timer", "Time to find the hidden keyword")}
+            ${timerCard("idleResetSeconds", "Return home", "Wait on the end screen before starting over")}
+          </div>
+        </div>
         <div class="admin-block admin-records">
-          <div class="section-label">Player records</div>
+          <h3 class="admin-h">Player records</h3>
           <div class="records-toolbar">
             <input data-admin-q class="admin-search" type="search" placeholder="Search name or Email ID" value="${escapeHtml(q)}" />
             <button class="btn btn-primary" type="button" data-csv>Download CSV</button>
-            <button class="btn" type="button" data-clear-db style="background:#f4ecff;color:var(--pp-purple)">Clear</button>
+            <button class="btn admin-clear" type="button" data-clear-db>Clear</button>
           </div>
-          <p class="records-count">${list.length} of ${all.length} games</p>
+          <p class="admin-count">${list.length} of ${all.length} games</p>
           <div class="records-table-wrap">
             ${
               rows
@@ -1631,6 +1709,23 @@ async function openAdminPanel() {
       setKeyboardMode(btn.getAttribute("data-kb-mode"));
       render();
       void openAdminPanel();
+    });
+  });
+  const applyTimer = (key, value) => {
+    saveSettings({ [key]: clampTimer(key, value) });
+    void openAdminPanel();
+  };
+  root.querySelectorAll("[data-timer-dir]").forEach((btn) => {
+    btn.addEventListener("pointerdown", () => {
+      const key = btn.getAttribute("data-timer-key");
+      const lim = TIMER_LIMITS[key];
+      const dir = btn.getAttribute("data-timer-dir") === "+" ? 1 : -1;
+      applyTimer(key, loadSettings()[key] + dir * lim.step);
+    });
+  });
+  root.querySelectorAll("[data-timer-set]").forEach((btn) => {
+    btn.addEventListener("pointerdown", () => {
+      applyTimer(btn.getAttribute("data-timer-key"), btn.getAttribute("data-timer-set"));
     });
   });
   const search = root.querySelector("[data-admin-q]");
