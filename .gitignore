@@ -4,4 +4,6 @@ Thumbs.db
 .env
 .env.*
 .vercel
+data/*.json
+data/*.csv
 .env*

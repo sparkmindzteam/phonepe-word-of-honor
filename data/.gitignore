@@ -1,0 +1,5 @@
+# Local score backups written by start-local.bat / local-server.py
+*.json
+*.csv
+*.tmp
+!.gitkeep

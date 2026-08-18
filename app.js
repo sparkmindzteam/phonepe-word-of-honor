@@ -1076,8 +1076,16 @@ async function hydrateScoreDb() {
     try {
       idb = await idbGetAllScores();
     } catch {}
+    let remote = [];
+    try {
+      const res = await fetch("/api/scores", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.scores)) remote = data.scores;
+      }
+    } catch {}
     const map = new Map();
-    [...local, ...idb].forEach((r) => {
+    [...local, ...idb, ...remote].forEach((r) => {
       if (r?.id) map.set(String(r.id), r);
     });
     const merged = [...map.values()].sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));

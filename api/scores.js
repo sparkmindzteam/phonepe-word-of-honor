@@ -62,6 +62,9 @@ export default async function handler(req, res) {
       rounds: Array.isArray(body.rounds) ? body.rounds : [],
     };
     const scores = await kvGet();
+    if (rec.id && scores.some((s) => String(s.id) === String(rec.id))) {
+      return res.status(200).json({ ok: true, record: rec, source: "kv", duplicate: true });
+    }
     scores.push(rec);
     await kvSet(scores);
     return res.status(201).json({ ok: true, record: rec, source: "kv" });
