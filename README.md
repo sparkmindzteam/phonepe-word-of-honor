@@ -20,23 +20,14 @@ Each correct quiz or keyword section awards **25 points**.
 
 Wrong Q1 skips that word search. Wrong Q2 ends the game.
 
-## Run locally (no Vercel)
+## Run locally
 
-Double-click **`start-local.bat`**. The game opens in locked kiosk mode (fullscreen, no back, no Windows home swipe). **Press ESC to unlock and exit.**
+Double-click **`start-local.bat`**. One locked kiosk:
 
-Double-click **`start-admin.bat`** for the admin page. Press **Ctrl+Shift+L** for kiosk controls.
+- **Ctrl+Shift+L** — open or close the admin panel (keyboard, timers, records)
+- **Esc** — close admin, or exit kiosk if admin is already closed
 
-- Player: http://127.0.0.1:5173
-- Admin: http://127.0.0.1:5173/admin (Ctrl+Shift+L)
-
-Each finished game is saved **once locally** and **once online**:
-
-- Local: `data\scores.json` and `data\scores.csv`
-- Online: https://phonepe-word-of-honor.vercel.app
-
-Python is not required. Windows PowerShell and Microsoft Edge are enough.
-
-Or `.\start-kiosk.ps1` for Edge kiosk mode.
+Scores save to `data\scores.json` / `data\scores.csv` and online.
 
 ## Deploy
 
@@ -45,4 +36,4 @@ Or `.\start-kiosk.ps1` for Edge kiosk mode.
 ```
 
 Live: **https://phonepe-word-of-honor.vercel.app**  
-Admin: **https://phonepe-word-of-honor.vercel.app/admin**
+Ctrl+Shift+L opens admin on that page too.

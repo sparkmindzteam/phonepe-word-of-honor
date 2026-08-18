@@ -1,5 +1,4 @@
-# Locked kiosk, or admin window with -Admin.
-param([switch]$Admin)
+# One locked kiosk. Ctrl+Shift+L opens admin. Esc closes admin, Esc again exits.
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -11,6 +10,7 @@ $dataDir = Join-Path $root "data"
 $scoresJson = Join-Path $dataDir "scores.json"
 $scoresCsv = Join-Path $dataDir "scores.csv"
 $settingsJson = Join-Path $dataDir "settings.json"
+$kioskExitFlag = Join-Path $dataDir "kiosk-exit.flag"
 $onlineUrl = "https://phonepe-word-of-honor.vercel.app/api/scores"
 $onlineSettingsUrl = "https://phonepe-word-of-honor.vercel.app/api/settings"
 $edgeProc = $null
@@ -120,11 +120,9 @@ public static class PhonePeKioskLock {
       KBDLLHOOKSTRUCT info = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
       bool alt = (info.flags & 0x20) != 0;
       int vk = info.vkCode;
-      if (vk == 0x1B && !Ctrl() && !alt) { ExitRequested = true; return (IntPtr)1; }
       if (vk == 0x5B || vk == 0x5C || vk == 0x7A) return (IntPtr)1;
       if (alt && (vk == 0x09 || vk == 0x73 || vk == 0x1B || vk == 0x25)) return (IntPtr)1;
-      if (Ctrl() && vk == 0x1B) return (IntPtr)1;
-      if (Ctrl() && Shift() && vk == 0x1B) return (IntPtr)1;
+      if (Ctrl() && vk == 0x1B && !Shift()) return (IntPtr)1;
       if (Ctrl() && (vk == 0x57 || vk == 0x54 || vk == 0x4E || vk == 0x52)) return (IntPtr)1;
     }
     return CallNextHookEx(_hook, nCode, wParam, lParam);
@@ -184,6 +182,7 @@ function Start-LocalServer {
   $rs.SessionStateProxy.SetVariable("dataDir", $dataDir)
   $rs.SessionStateProxy.SetVariable("onlineUrl", $onlineUrl)
   $rs.SessionStateProxy.SetVariable("onlineSettingsUrl", $onlineSettingsUrl)
+  $rs.SessionStateProxy.SetVariable("kioskExitFlag", $kioskExitFlag)
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
   [void]$ps.AddScript({
@@ -327,6 +326,11 @@ function Start-LocalServer {
             continue
           }
         }
+        if (($path -eq "/api/kiosk/exit" -or $path -eq "/api/kiosk/exit/") -and $ctx.Request.HttpMethod -eq "POST") {
+          Set-Content -Path $kioskExitFlag -Value "1" -Encoding ASCII
+          WriteJson $ctx 200 @{ ok = $true }
+          continue
+        }
         $rel = $path.TrimStart("/").Replace("/", [IO.Path]::DirectorySeparatorChar)
         $full = [IO.Path]::GetFullPath((Join-Path $root $rel))
         if (-not $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path $full -PathType Leaf)) {
@@ -363,41 +367,27 @@ function Stop-KioskBrowser {
 
 try {
   Ensure-Data
+  Remove-Item $kioskExitFlag -ErrorAction SilentlyContinue
   $browser = Get-Browser
-
-  if ($Admin) {
-    Write-Host "Opening admin page..."
-    Write-Host "Press Ctrl+Shift+L for kiosk controls."
-    if (-not (Test-LocalServer)) { Start-LocalServer; Start-Sleep -Milliseconds 400 }
-    $adminUrl = "http://127.0.0.1:$port/admin"
-    $edgeProc = Start-Process -FilePath $browser -ArgumentList @($adminUrl) -PassThru
-    Write-Host $adminUrl
-    if ($edgeProc) {
-      Wait-Process -Id $edgeProc.Id -ErrorAction SilentlyContinue
-    } else {
-      Write-Host "Close this window when you are finished."
-      pause
-    }
-  } else {
-    Write-Host "Starting locked kiosk..."
-    Write-Host "Press ESC to unlock and exit."
-    Enable-GestureLock
-    if (-not (Test-LocalServer)) { Start-LocalServer; Start-Sleep -Milliseconds 400 }
-    $browserArgs = @(
-      "--kiosk", $url,
-      "--edge-kiosk-type=fullscreen",
-      "--no-first-run",
-      "--disable-pinch",
-      "--overscroll-history-navigation=0",
-      "--disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI",
-      "--user-data-dir=$profileDir"
-    )
-    $edgeProc = Start-Process -FilePath $browser -ArgumentList $browserArgs -PassThru
-    [PhonePeKioskLock]::Install()
-    while (-not [PhonePeKioskLock]::ExitRequested) {
-      if ($edgeProc -and $edgeProc.HasExited) { break }
-      Start-Sleep -Milliseconds 150
-    }
+  Write-Host "Starting locked kiosk..."
+  Write-Host "Ctrl+Shift+L opens admin. Esc closes admin. Esc again exits kiosk."
+  Enable-GestureLock
+  if (-not (Test-LocalServer)) { Start-LocalServer; Start-Sleep -Milliseconds 400 }
+  $browserArgs = @(
+    "--kiosk", $url,
+    "--edge-kiosk-type=fullscreen",
+    "--no-first-run",
+    "--disable-pinch",
+    "--overscroll-history-navigation=0",
+    "--disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI",
+    "--user-data-dir=$profileDir"
+  )
+  $edgeProc = Start-Process -FilePath $browser -ArgumentList $browserArgs -PassThru
+  [PhonePeKioskLock]::Install()
+  while (-not [PhonePeKioskLock]::ExitRequested) {
+    if ($edgeProc -and $edgeProc.HasExited) { break }
+    if (Test-Path $kioskExitFlag) { break }
+    Start-Sleep -Milliseconds 150
   }
 }
 catch {
@@ -408,11 +398,10 @@ catch {
   pause
 }
 finally {
-  if (-not $Admin) {
-    try { [PhonePeKioskLock]::Uninstall() } catch {}
-    Stop-KioskBrowser
-    Restore-GestureLock
-    Write-Host "Kiosk unlocked."
-  }
+  try { [PhonePeKioskLock]::Uninstall() } catch {}
+  Stop-KioskBrowser
+  Restore-GestureLock
   if ($script:startedServer) { Stop-LocalServer }
+  Remove-Item $kioskExitFlag -ErrorAction SilentlyContinue
+  Write-Host "Kiosk unlocked."
 }

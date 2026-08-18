@@ -1634,7 +1634,6 @@ function closeAdminPanel() {
 }
 
 async function openAdminPanel() {
-  if (!isAdminLink()) return;
   adminOpen = true;
   hideVirtualKeyboard();
   snapshotDetailsForm();
@@ -1702,7 +1701,7 @@ async function openAdminPanel() {
           <div>
             <p class="admin-kicker">Admin</p>
             <h2 class="admin-title">Kiosk controls</h2>
-            <p class="admin-sub">Press Ctrl+Shift+L to close. Use a USB keyboard in this panel.</p>
+            <p class="admin-sub">Ctrl+Shift+L closes this panel. Esc closes it too. Esc again exits the kiosk.</p>
           </div>
           <button type="button" class="btn btn-primary" data-admin-close>Close</button>
         </div>
@@ -1785,7 +1784,6 @@ async function openAdminPanel() {
 }
 
 function toggleAdminPanel() {
-  if (!isAdminLink()) return;
   if (adminOpen) closeAdminPanel();
   else void openAdminPanel();
 }
@@ -2269,19 +2267,21 @@ function updateGridSelectionUI() {
   window.addEventListener(
     "keydown",
     (e) => {
-    if (e.key === "Escape" && adminOpen) {
+    if (e.key === "Escape") {
       e.preventDefault();
-      closeAdminPanel();
+      if (adminOpen) {
+        closeAdminPanel();
+        return;
+      }
+      fetch("/api/kiosk/exit", { method: "POST" }).catch(() => {});
       return;
     }
     if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === "KeyL" || e.key === "l" || e.key === "L")) {
-      if (!isAdminLink()) return;
       e.preventDefault();
       toggleAdminPanel();
       return;
     }
     if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.code === "KeyD" || e.key === "d" || e.key === "D")) {
-      if (!isAdminLink()) return;
       e.preventDefault();
       recordsOpen = !recordsOpen;
       if (recordsOpen) closeAdminPanel();
