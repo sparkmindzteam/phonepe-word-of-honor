@@ -1788,6 +1788,13 @@ async function openAdminPanel() {
     try {
       await idbReplaceAllScores([]);
     } catch {}
+    try {
+      await fetch("/api/scores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: true }),
+      });
+    } catch {}
     void openAdminPanel();
   });
 }
@@ -2159,6 +2166,13 @@ async function renderRecords() {
     saveScoreDb([]);
     try {
       await idbReplaceAllScores([]);
+    } catch {}
+    try {
+      await fetch("/api/scores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: true }),
+      });
     } catch {}
     renderRecords();
   });

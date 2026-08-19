@@ -183,6 +183,11 @@ class Handler(SimpleHTTPRequestHandler):
         except json.JSONDecodeError:
             self._json(400, {"ok": False, "error": "invalid json"})
             return
+        if body.get("clear"):
+            with LOCK:
+                save_scores([])
+            self._json(200, {"ok": True, "scores": [], "cleared": True})
+            return
         if not body.get("name") and not body.get("email"):
             self._json(400, {"ok": False, "error": "name or email required"})
             return

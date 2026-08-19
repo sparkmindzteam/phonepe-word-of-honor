@@ -45,9 +45,13 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, scores, source: "kv" });
   }
 
-  if (req.method === "POST") {
-    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
-    if (!body.name && !body.email) {
+    if (req.method === "POST") {
+      const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+      if (body.clear) {
+        await kvSet([]);
+        return res.status(200).json({ ok: true, scores: [], cleared: true, source: "kv" });
+      }
+      if (!body.name && !body.email) {
       return res.status(400).json({ ok: false, error: "name or email required" });
     }
     const rec = {
